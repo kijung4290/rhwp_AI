@@ -613,7 +613,14 @@ fn parse_para_shape_switch(
                             }
                             if in_hwpunitchar_case {
                                 if let Some(t) = ls_type { ps.line_spacing_type = t; }
-                                if let Some(v) = ls_val { ps.line_spacing = v; }
+                                if let Some(v) = ls_val {
+                                    // Fixed/SpaceOnly/Minimum은 HWPUNIT이므로 2× 스케일 변환
+                                    let effective_type = ls_type.unwrap_or(ps.line_spacing_type);
+                                    ps.line_spacing = match effective_type {
+                                        LineSpacingType::Percent => v,
+                                        _ => v * 2,
+                                    };
+                                }
                                 found_case = true;
                             } else if in_default {
                                 def_line_spacing_type = ls_type;
