@@ -188,7 +188,17 @@ impl LayoutEngine {
 
         let common = shape.common();
 
-        let (shape_w, shape_h) = self.resolve_object_size(common, col_area, body_area, paper_area);
+        let (mut shape_w, mut shape_h) = self.resolve_object_size(common, col_area, body_area, paper_area);
+
+        // current size가 common size보다 크면 current size 사용
+        // (스케일 행렬이 적용된 글상자 등에서 common.height < current_height인 경우)
+        {
+            let sa = shape.shape_attr();
+            let cur_w = hwpunit_to_px(sa.current_width as i32, self.dpi);
+            let cur_h = hwpunit_to_px(sa.current_height as i32, self.dpi);
+            if cur_w > shape_w && cur_w > 0.0 { shape_w = cur_w; }
+            if cur_h > shape_h && cur_h > 0.0 { shape_h = cur_h; }
+        }
 
         // 문단 여백 반영: Para 기준 위치 지정 시 문단의 왼쪽/오른쪽 여백 고려
         let composed_para = paragraphs.get(para_index)
@@ -506,23 +516,22 @@ impl LayoutEngine {
         // 공통: 회전/대칭 정보 추출
         let transform = extract_shape_transform(shape.shape_attr());
 
-        // current 크기가 common 크기와 다르면 (스케일/회전) current 크기 사용
-        // 회전이 있으면 중앙 배치, 스케일만 있으면 base 위치 유지
-        let (render_x, render_y, render_w, render_h) = {
+        // 회전/대칭이 있으면 current 크기로 중앙 배치
+        // 그렇지 않으면 호출자가 전달한 w, h를 그대로 사용
+        // (그룹 자식은 호출자가 render_sx/sy로 스케일 적용 후 w,h 전달)
+        let (render_x, render_y, render_w, render_h) = if transform.has_transform() {
             let sa = shape.shape_attr();
             let cur_w = hwpunit_to_px(sa.current_width as i32, self.dpi);
             let cur_h = hwpunit_to_px(sa.current_height as i32, self.dpi);
-            if transform.has_transform() && cur_w > 0.0 && cur_h > 0.0 {
-                // 회전/대칭: 중앙 배치
+            if cur_w > 0.0 && cur_h > 0.0 {
                 let cx = base_x + w / 2.0;
                 let cy = base_y + h / 2.0;
                 (cx - cur_w / 2.0, cy - cur_h / 2.0, cur_w, cur_h)
-            } else if cur_w > 0.0 && cur_h > 0.0 && (cur_w - w).abs() > 1.0 || (cur_h - h).abs() > 1.0 {
-                // 스케일만 (회전 없음): base 위치 유지, current 크기 사용
-                (base_x, base_y, cur_w, cur_h)
             } else {
                 (base_x, base_y, w, h)
             }
+        } else {
+            (base_x, base_y, w, h)
         };
 
         match shape {
