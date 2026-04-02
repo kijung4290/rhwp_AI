@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.5.0] - 2026-04-02
+
+### 추가
+
+- HWPX TabDef 파싱: hp:switch 구조, 2× 스케일, fill_type 매핑 (#13)
+- 탭 리더 채울 모양 12종 SVG/Canvas 렌더링 (#13)
+- 밑줄/취소선 13종 렌더링: 물결선, 이중물결선 포함 (#16)
+- HWPX 글상자(사각형) 파싱: curSz/fillBrush/lineShape (#15)
+- IR 비교 도구: `rhwp ir-diff` CLI 명령 (#18)
+- CSS 디자인 토큰: 색상/타이포그래피/간격 30개 변수 (#22)
+- 모바일 반응형 레이아웃: 태블릿/모바일/터치/인쇄 대응 (#22)
+- iOS IME 한글 조합: contentEditable div + afterEdit 디바운스
+- 글상자 내부 표/그림 렌더링 (#24, #25)
+
+### 수정
+
+- 페이지네이션 부동소수점 누적 오차 0.5px 톨러런스 (#14)
+- HWPX 탭 문자 UTF-16 8 code unit 매핑 (#17)
+- ParaShape lineSpacing Fixed/SpaceOnly/Minimum 2× 스케일 (#18)
+- shape 배경 pattern_type 판정: >=0 → >0 (#16)
+- 글상자 기본 treat_as_char=true (#2)
+- iOS Canvas 최대 크기 64MP 제한 DPR 자동 조절
+- 폭 맞춤/쪽 맞춤 줌: pageInfo 이중 변환 제거
+- 글상자 내부 표 너비 비례 축소 (#24)
+- 개체묶음 자식 도형 크기 regression 수정 (#27)
+- 바탕쪽 탭 리더 렌더링 억제 — 고스트 라인 제거 (#28)
+- Canvas 이중선 종류 반전 + 간격 과도 수정 (#28)
+
 ## [0.4.0] - 2026-03-31
 
 ### 수정
