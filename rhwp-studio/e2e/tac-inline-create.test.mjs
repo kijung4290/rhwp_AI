@@ -40,9 +40,10 @@ runTest('인라인 TAC 표 — 한컴 방식 입력', async ({ page }) => {
   await screenshot(page, 'tac-build-02-enter');
   console.log('  Step 2: Enter');
 
-  // ── Step 3: 표 앞 텍스트 ──
+  // ── Step 3: 표 앞 텍스트 + 공백 3개 ──
   await page.keyboard.type('tacglkj ', { delay: 40 });
   await page.keyboard.type('표 3 배치 시작', { delay: 60 });
+  await page.keyboard.type('   ', { delay: 50 }); // 공백 3개
   await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
   await screenshot(page, 'tac-build-03-before');
   console.log('  Step 3: "tacglkj 표 3 배치 시작"');
@@ -99,6 +100,8 @@ runTest('인라인 TAC 표 — 한컴 방식 입력', async ({ page }) => {
     // charOffset = textLen + 1 = 표 뒤 (insert_text_at이 컨트롤 뒤 처리)
     await moveCursorTo(page, 0, 1, textLen + 1);
   }
+  // 공백 3개 + 텍스트
+  await page.keyboard.type('   ', { delay: 50 }); // 공백 3개
   await page.keyboard.type('4 tacglkj ', { delay: 40 });
   await page.keyboard.type('표 다음', { delay: 60 });
   await page.evaluate(() => new Promise(r => setTimeout(r, 300)));
