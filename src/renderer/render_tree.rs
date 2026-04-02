@@ -66,6 +66,79 @@ impl RenderNode {
         }
         self.children.iter().any(|c| c.has_dirty_nodes())
     }
+
+    /// 렌더 트리를 JSON 문자열로 직렬화한다.
+    pub fn to_json(&self) -> String {
+        let mut buf = String::with_capacity(4096);
+        self.write_json(&mut buf);
+        buf
+    }
+
+    fn write_json(&self, buf: &mut String) {
+        buf.push('{');
+        // type
+        let (type_str, extra) = match &self.node_type {
+            RenderNodeType::Page(_) => ("Page", String::new()),
+            RenderNodeType::PageBackground(_) => ("PageBg", String::new()),
+            RenderNodeType::MasterPage => ("MasterPage", String::new()),
+            RenderNodeType::Header => ("Header", String::new()),
+            RenderNodeType::Footer => ("Footer", String::new()),
+            RenderNodeType::Body { .. } => ("Body", String::new()),
+            RenderNodeType::Column(c) => ("Column", format!(",\"col\":{}", c)),
+            RenderNodeType::FootnoteArea => ("FootnoteArea", String::new()),
+            RenderNodeType::TextLine(tl) => ("TextLine", format!(
+                ",\"pi\":{}", tl.para_index.unwrap_or(0))),
+            RenderNodeType::TextRun(tr) => ("TextRun", format!(
+                ",\"text\":{},\"pi\":{}", json_escape(&tr.text),
+                tr.section_index.map(|_| tr.para_index.unwrap_or(0)).unwrap_or(0))),
+            RenderNodeType::Table(tn) => ("Table", format!(
+                ",\"rows\":{},\"cols\":{}{}{}", tn.row_count, tn.col_count,
+                tn.para_index.map(|pi| format!(",\"pi\":{}", pi)).unwrap_or_default(),
+                tn.control_index.map(|ci| format!(",\"ci\":{}", ci)).unwrap_or_default())),
+            RenderNodeType::TableCell(tc) => ("Cell", format!(
+                ",\"row\":{},\"col\":{}", tc.row, tc.col)),
+            RenderNodeType::Image(_) => ("Image", String::new()),
+            RenderNodeType::TextBox => ("TextBox", String::new()),
+            RenderNodeType::Equation(_) => ("Equation", String::new()),
+            RenderNodeType::Line(_) => ("Line", String::new()),
+            RenderNodeType::Rectangle(_) => ("Rect", String::new()),
+            RenderNodeType::Ellipse(_) => ("Ellipse", String::new()),
+            RenderNodeType::Path(_) => ("Path", String::new()),
+            RenderNodeType::Group(_) => ("Group", String::new()),
+            RenderNodeType::FormObject(_) => ("Form", String::new()),
+            RenderNodeType::FootnoteMarker(_) => ("FnMarker", String::new()),
+        };
+        buf.push_str(&format!("\"type\":\"{}\",\"bbox\":{{\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1}}}",
+            type_str, self.bbox.x, self.bbox.y, self.bbox.width, self.bbox.height));
+        buf.push_str(&extra);
+        if !self.children.is_empty() {
+            buf.push_str(",\"children\":[");
+            for (i, child) in self.children.iter().enumerate() {
+                if i > 0 { buf.push(','); }
+                child.write_json(buf);
+            }
+            buf.push(']');
+        }
+        buf.push('}');
+    }
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c < '\x20' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// 렌더 노드 종류

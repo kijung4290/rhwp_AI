@@ -209,6 +209,13 @@ impl HwpDocument {
         Ok(())
     }
 
+    /// 페이지 렌더 트리를 JSON 문자열로 반환한다.
+    #[wasm_bindgen(js_name = getPageRenderTree)]
+    pub fn get_page_render_tree(&self, page_num: u32) -> Result<String, JsValue> {
+        let tree = self.build_page_tree_cached(page_num).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(tree.root.to_json())
+    }
+
     /// 페이지 정보를 JSON 문자열로 반환한다.
     #[wasm_bindgen(js_name = getPageInfo)]
     pub fn get_page_info(&self, page_num: u32) -> Result<String, JsValue> {
