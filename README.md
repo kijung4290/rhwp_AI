@@ -5,6 +5,7 @@
 지금까지 hwp/hwpx는 특정 회사의 전유물이었습니다.
 rhwp는 공개된 hwp/hwpx 스펙문서를 기반으로, AI에 적합한 방식으로 재구성하고 모두가 참여할 수 있는 워크스페이스를 목표로 합니다.
 
+[![CI](https://github.com/edwardkim/rhwp/actions/workflows/ci.yml/badge.svg)](https://github.com/edwardkim/rhwp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![WASM](https://img.shields.io/badge/WebAssembly-Ready-blue.svg)](https://webassembly.org/)
