@@ -101,7 +101,39 @@ In Hyper-Waterfall:
 | Knowledge management | In people's heads | Documented (AI records everything) |
 | Technical debt | Accumulates | Resolved every cycle |
 
-## 3. Roles and Responsibilities
+## 3. Core Principles
+
+Three principles of Hyper-Waterfall. Violate these and it degrades into vibe coding.
+
+### Principle 1: Keep the implementation goal in the AI's context
+
+AI maintains consistency only within the current conversation context. If the project's vision, architectural principles, and quality standards fall out of the AI's context, it loses direction and produces fragmented code.
+
+- **CLAUDE.md** — Specify project rules, build methods, and workflows explicitly
+- **Task registration** — Clearly describe goals and scope
+- **When context grows long** — Summarize and re-inject core context
+
+### Principle 2: The task director must maintain control
+
+The moment you hand direction to AI, the project drifts. What to build, in what order, when to stop — all these decisions belong to the human.
+
+- **AI proposes plans, the human approves**
+- **AI does not suggest ending work on its own** — the task director decides
+- **Architecture changes must go through human judgment**
+- **Don't just say "looks good"** — verify it yourself
+
+### Principle 3: Periodically verify AI context retention
+
+AI's enemies are **memory limits and token consumption**. As conversations grow longer, AI loses early context, repeats the same mistakes, or produces code that contradicts previously agreed-upon directions.
+
+- **Recognize context compression points** — it's a warning sign when AI starts forgetting previous decisions
+- **Externalize key decisions to documents** — record in files, not AI memory
+- **When starting a new session** — provide a summary of previous context
+- **Use memory systems** — persistent per-project memory storage
+
+> These three principles are the concrete practice of "the human never stops thinking."
+
+## 4. Roles and Responsibilities
 
 ### Task Director (Human)
 
@@ -183,7 +215,7 @@ Every task must pass the following:
 4. **E2E verification** — Confirm rendering in the browser
 5. **Regression prevention** — No change in page counts for existing sample files
 
-## 5. Why AI Makes This Possible
+## 6. Why AI Makes This Possible
 
 ### The Disappearance of Documentation Costs
 
@@ -207,7 +239,7 @@ The biggest risk in Agile is the "bus factor" — if the key developer gets hit 
 
 In Hyper-Waterfall, every decision, every debugging session, every architecture choice is documented. Because the AI records it automatically. Even if a developer leaves, the documentation remains.
 
-## 6. Real-World Evidence: The rhwp Project
+## 7. Real-World Evidence: The rhwp Project
 
 ### Scale
 
@@ -241,7 +273,7 @@ Work that would take **2–3 weeks** with traditional methodologies was complete
 - Better debugging tools than paid HWP SDKs
 - 100+ GitHub stars achieved (on launch day)
 
-## 7. Methodology Comparison Summary
+## 8. Methodology Comparison Summary
 
 ```
         High Discipline
@@ -267,7 +299,7 @@ Work that would take **2–3 weeks** with traditional methodologies was complete
 | Maintainability | ●●●●○ | ●●○○○ | ○○○○○ | ●●●●● |
 | **Prerequisite** | Large team | Small team | AI tools | **AI + skilled human** |
 
-## 8. When to Apply
+## 9. When to Apply
 
 Hyper-Waterfall is not for everyone.
 
@@ -292,7 +324,7 @@ Hyper-Waterfall is not for everyone.
 - "Build fast and throw away" prototypes
 - When you lack the ability to verify AI output
 
-## 9. Conclusion
+## 10. Conclusion
 
 > AI is a multiplier. Without process, it produces rapid chaos; with good process, it produces extraordinary results.
 
