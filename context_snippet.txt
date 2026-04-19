@@ -1,0 +1,4 @@
+﻿>
+      <span class="tb-sep"></span>
+      <div class="tb-group">
+        <button class="tb-btn" id="tb-char-format" data-cmd="format:char-shape" t

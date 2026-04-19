@@ -25,6 +25,12 @@
   "optionsTitle": {
     "message": "rhwp 설정"
   },
+  "optionsSectionGeneral": {
+    "message": "일반"
+  },
+  "optionsSectionAi": {
+    "message": "AI 설정"
+  },
   "optionsAutoOpen": {
     "message": "HWP/HWPX 다운로드 시 자동으로 뷰어에서 열기"
   },
@@ -39,5 +45,68 @@
   },
   "optionsPrivacy": {
     "message": "파일은 서버로 전송되지 않으며, 모든 처리는 브라우저 내에서 이루어집니다."
+  },
+  "optionsAiApiKey": {
+    "message": "OpenAI API 키"
+  },
+  "optionsAiModel": {
+    "message": "사용할 모델"
+  },
+  "optionsHintApiKey": {
+    "message": "API 키는 브라우저에 안전하게 저장되며 외부로 전송되지 않습니다. platform.openai.com에서 발급받을 수 있습니다."
+  },
+  "optionsBtnTest": {
+    "message": "연결 테스트"
+  },
+  "optionsBtnClearKey": {
+    "message": "키 삭제"
+  },
+  "optionsTesting": {
+    "message": "테스트 중..."
+  },
+  "optionsTestSuccess": {
+    "message": "연결 성공! API 키가 유효합니다."
+  },
+  "optionsTestFail": {
+    "message": "연결 실패"
+  },
+  "aiSidePanelTitle": {
+    "message": "rhwp AI 어시스턴트"
+  },
+  "aiPlaceholder": {
+    "message": "문서 작성 명령을 입력하세요..."
+  },
+  "aiSend": {
+    "message": "전송"
+  },
+  "aiCancel": {
+    "message": "중지"
+  },
+  "aiGenerating": {
+    "message": "생성 중..."
+  },
+  "aiErrorNoKey": {
+    "message": "API 키가 설정되지 않았습니다. 확장 프로그램 설정에서 OpenAI API 키를 입력하세요."
+  },
+  "aiErrorNetwork": {
+    "message": "네트워크 오류가 발생했습니다."
+  },
+  "aiSuggestionTable": {
+    "message": "표 만들기"
+  },
+  "aiSuggestionFormat": {
+    "message": "서식 적용"
+  },
+  "aiSuggestionWrite": {
+    "message": "글 작성"
+  },
+  "aiContextCreateTable": {
+    "message": "표 생성"
+  },
+  "aiContextFormat": {
+    "message": "AI 서식 적용"
+  },
+  "aiContextWrite": {
+    "message": "AI 글 작성"
   }
 }

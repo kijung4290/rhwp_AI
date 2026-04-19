@@ -1,89 +1,151 @@
 #!/usr/bin/env node
-// rhwp-chrome 빌드 스크립트
-// 1. rhwp-studio를 Vite로 빌드 → dist/
-// 2. WASM, 폰트, 확장 파일(manifest, background, content-script)을 dist/에 복사
-// 3. dist/ 폴더가 곧 Chrome 확장 프로그램
 
-import { execSync } from 'child_process';
-import { cpSync, mkdirSync, existsSync, renameSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { execFileSync } from 'child_process';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const DIST = resolve(__dirname, 'dist');
 
-function run(cmd, cwd = __dirname) {
-  console.log(`> ${cmd}`);
-  execSync(cmd, { stdio: 'inherit', cwd });
-}
-
-function copy(src, dest) {
-  if (!existsSync(src)) {
-    console.warn(`  SKIP (not found): ${src}`);
+function cleanDist() {
+  if (!existsSync(DIST)) {
     return;
   }
-  cpSync(src, dest, { recursive: true });
-  console.log(`  COPY: ${src} → ${dest}`);
+
+  if (process.platform === 'win32') {
+    execFileSync('cmd.exe', ['/d', '/s', '/c', `if exist "${DIST}" rmdir /s /q "${DIST}"`], {
+      stdio: 'inherit',
+      cwd: __dirname,
+    });
+    return;
+  }
+
+  rmSync(DIST, { recursive: true, force: true });
 }
 
-console.log('=== rhwp-chrome 빌드 시작 ===\n');
+async function buildViewer() {
+  const studioDir = resolve(ROOT, 'rhwp-studio');
+  const viteEntry = resolve(__dirname, 'node_modules', 'vite', 'dist', 'node', 'index.js');
+  const { build } = await import(pathToFileURL(viteEntry).href);
 
-// 1. Vite 빌드 (rhwp-studio → dist/)
-console.log('[1/4] Vite 빌드...');
-const studioDir = resolve(ROOT, 'rhwp-studio');
-run(`npx vite build --config ${resolve(__dirname, 'vite.config.ts')}`, studioDir);
-
-// index.html → viewer.html 이름 변경
-const indexHtml = resolve(DIST, 'index.html');
-const viewerHtml = resolve(DIST, 'viewer.html');
-if (existsSync(indexHtml)) {
-  renameSync(indexHtml, viewerHtml);
-  console.log('  RENAME: index.html → viewer.html');
+  await build({
+    configFile: false,
+    root: studioDir,
+    publicDir: false,
+    resolve: {
+      preserveSymlinks: true,
+      alias: {
+        '@': resolve(studioDir, 'src'),
+        '@wasm': resolve(ROOT, 'pkg'),
+      },
+    },
+    build: {
+      outDir: DIST,
+      emptyOutDir: true,
+      minify: false,
+      cssMinify: false,
+      reportCompressedSize: false,
+      rollupOptions: {
+        input: {
+          viewer: resolve(studioDir, 'index.html'),
+        },
+      },
+      assetsInlineLimit: 0,
+    },
+  });
 }
 
-// viewer.html에 DevTools 스크립트 주입 (확장 뷰어 탭에서도 rhwpDev 사용 가능)
-import { readFileSync, writeFileSync } from 'fs';
-const viewerContent = readFileSync(viewerHtml, 'utf-8');
-writeFileSync(viewerHtml, viewerContent.replace(
-  '</head>',
-  '  <script src="/dev-tools-inject.js"></script>\n</head>'
-));
-console.log('  INJECT: dev-tools-inject.js → viewer.html');
+function copyPath(src, dest) {
+  if (!existsSync(src)) {
+    console.warn(`  SKIP: ${src}`);
+    return;
+  }
 
-// 2. 확장 파일 복사
-console.log('\n[2/4] 확장 파일 복사...');
-copy(resolve(__dirname, 'manifest.json'), resolve(DIST, 'manifest.json'));
-copy(resolve(__dirname, 'background.js'), resolve(DIST, 'background.js'));
-copy(resolve(__dirname, 'content-script.js'), resolve(DIST, 'content-script.js'));
-copy(resolve(__dirname, 'content-script.css'), resolve(DIST, 'content-script.css'));
-copy(resolve(__dirname, 'dev-tools-inject.js'), resolve(DIST, 'dev-tools-inject.js'));
-copy(resolve(__dirname, 'sw'), resolve(DIST, 'sw'));
-copy(resolve(__dirname, 'options.html'), resolve(DIST, 'options.html'));
+  const srcStat = statSync(src);
+  if (srcStat.isDirectory()) {
+    mkdirSync(dest, { recursive: true });
+    for (const entry of readdirSync(src)) {
+      copyPath(resolve(src, entry), resolve(dest, entry));
+    }
+    return;
+  }
 
-// 아이콘
-mkdirSync(resolve(DIST, 'icons'), { recursive: true });
-copy(resolve(__dirname, 'icons'), resolve(DIST, 'icons'));
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(src, dest, { force: true });
+  console.log(`  COPY: ${src} -> ${dest}`);
+}
 
-// i18n
-copy(resolve(__dirname, '_locales'), resolve(DIST, '_locales'));
+function rewriteViewerHtml() {
+  const indexHtml = resolve(DIST, 'index.html');
+  const viewerHtml = resolve(DIST, 'viewer.html');
 
-// rhwp-studio 리소스 (CSS에서 참조)
-mkdirSync(resolve(DIST, 'images'), { recursive: true });
-copy(resolve(ROOT, 'rhwp-studio', 'public', 'images', 'icon_small_ko.svg'), resolve(DIST, 'images', 'icon_small_ko.svg'));
-copy(resolve(ROOT, 'rhwp-studio', 'public', 'favicon.ico'), resolve(DIST, 'favicon.ico'));
+  if (existsSync(indexHtml)) {
+    renameSync(indexHtml, viewerHtml);
+    console.log('  RENAME: index.html -> viewer.html');
+  }
 
-// 3. WASM 복사
-console.log('\n[3/4] WASM 복사...');
-mkdirSync(resolve(DIST, 'wasm'), { recursive: true });
-copy(resolve(ROOT, 'pkg', 'rhwp.js'), resolve(DIST, 'wasm', 'rhwp.js'));
-copy(resolve(ROOT, 'pkg', 'rhwp.d.ts'), resolve(DIST, 'wasm', 'rhwp.d.ts'));
-copy(resolve(ROOT, 'pkg', 'rhwp_bg.wasm'), resolve(DIST, 'wasm', 'rhwp_bg.wasm'));
-copy(resolve(ROOT, 'pkg', 'rhwp_bg.wasm.d.ts'), resolve(DIST, 'wasm', 'rhwp_bg.wasm.d.ts'));
+  const viewerContent = readFileSync(viewerHtml, 'utf-8');
+  const nextContent = viewerContent.includes('/dev-tools-inject.js')
+    ? viewerContent
+    : viewerContent.replace(
+        '</head>',
+        '  <script src="/dev-tools-inject.js"></script>\n</head>',
+      );
 
-// 4. 폰트 복사 (필수 폰트만)
-console.log('\n[4/4] 폰트 복사...');
-mkdirSync(resolve(DIST, 'fonts'), { recursive: true });
+  writeFileSync(viewerHtml, nextContent);
+  console.log('  INJECT: dev-tools-inject.js -> viewer.html');
+
+  if (!nextContent.includes('ai:create-table') || !nextContent.includes('ai:open-panel')) {
+    console.warn('  WARN: AI toolbar buttons were not found in viewer.html.');
+  } else {
+    console.log('  OK: AI toolbar buttons found');
+  }
+}
+
+console.log('=== rhwp-chrome build start ===\n');
+
+console.log('[1/4] Vite build...');
+cleanDist();
+await buildViewer();
+rewriteViewerHtml();
+
+console.log('\n[2/4] Copy extension assets...');
+copyPath(resolve(__dirname, 'manifest.json'), resolve(DIST, 'manifest.json'));
+copyPath(resolve(__dirname, 'background.js'), resolve(DIST, 'background.js'));
+copyPath(resolve(__dirname, 'content-script.js'), resolve(DIST, 'content-script.js'));
+copyPath(resolve(__dirname, 'content-script.css'), resolve(DIST, 'content-script.css'));
+copyPath(resolve(__dirname, 'dev-tools-inject.js'), resolve(DIST, 'dev-tools-inject.js'));
+copyPath(resolve(__dirname, 'sw'), resolve(DIST, 'sw'));
+copyPath(resolve(__dirname, 'options.html'), resolve(DIST, 'options.html'));
+copyPath(resolve(__dirname, 'options.js'), resolve(DIST, 'options.js'));
+copyPath(resolve(__dirname, 'ai'), resolve(DIST, 'ai'));
+copyPath(resolve(__dirname, 'icons'), resolve(DIST, 'icons'));
+copyPath(resolve(__dirname, '_locales'), resolve(DIST, '_locales'));
+copyPath(
+  resolve(ROOT, 'rhwp-studio', 'public', 'images', 'icon_small_ko.svg'),
+  resolve(DIST, 'images', 'icon_small_ko.svg'),
+);
+copyPath(resolve(ROOT, 'rhwp-studio', 'public', 'favicon.ico'), resolve(DIST, 'favicon.ico'));
+
+console.log('\n[3/4] Copy WASM...');
+copyPath(resolve(ROOT, 'pkg', 'rhwp.js'), resolve(DIST, 'wasm', 'rhwp.js'));
+copyPath(resolve(ROOT, 'pkg', 'rhwp.d.ts'), resolve(DIST, 'wasm', 'rhwp.d.ts'));
+copyPath(resolve(ROOT, 'pkg', 'rhwp_bg.wasm'), resolve(DIST, 'wasm', 'rhwp_bg.wasm'));
+copyPath(resolve(ROOT, 'pkg', 'rhwp_bg.wasm.d.ts'), resolve(DIST, 'wasm', 'rhwp_bg.wasm.d.ts'));
+
+console.log('\n[4/4] Copy fonts...');
 const essentialFonts = [
   'Pretendard-Regular.woff2',
   'Pretendard-Bold.woff2',
@@ -100,9 +162,10 @@ const essentialFonts = [
   'NanumMyeongjo-Bold.woff2',
   'D2Coding-Regular.woff2',
 ];
+
 for (const font of essentialFonts) {
-  copy(resolve(ROOT, 'web', 'fonts', font), resolve(DIST, 'fonts', font));
+  copyPath(resolve(ROOT, 'web', 'fonts', font), resolve(DIST, 'fonts', font));
 }
 
-console.log('\n=== 빌드 완료 ===');
-console.log(`출력: ${DIST}`);
+console.log('\n=== Build complete ===');
+console.log(`Output: ${DIST}`);

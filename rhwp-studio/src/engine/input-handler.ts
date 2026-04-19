@@ -990,6 +990,8 @@ export class InputHandler {
       { type: 'command', commandId: 'edit:copy' },
       { type: 'command', commandId: 'edit:paste' },
       { type: 'separator' },
+      ...this.getAiContextMenuItems(),
+      { type: 'separator' },
       { type: 'command', commandId: 'table:cell-props', label: '셀 속성...' },
       { type: 'separator' },
       { type: 'command', commandId: 'table:insert-row-above' },
@@ -1021,10 +1023,29 @@ export class InputHandler {
       { type: 'command', commandId: 'edit:copy' },
       { type: 'command', commandId: 'edit:paste' },
       { type: 'separator' },
+      ...this.getAiContextMenuItems(),
+      { type: 'separator' },
       { type: 'command', commandId: 'format:char-shape', label: '글자 모양' },
       { type: 'command', commandId: 'format:para-shape', label: '문단 모양' },
       { type: 'separator' },
       { type: 'command', commandId: 'format:para-num-shape', label: '문단 번호 모양(N)...' },
+    ];
+  }
+
+  private getAiContextMenuItems(): ContextMenuItem[] {
+    const hasSelection = this.cursor.hasSelection();
+
+    if (hasSelection) {
+      return [
+        { type: 'command', commandId: 'ai:rewrite-selection', label: 'AI로 선택 내용 수정' },
+        { type: 'command', commandId: 'ai:complete-selection', label: 'AI로 선택 내용 이어쓰기' },
+        { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
+      ];
+    }
+
+    return [
+      { type: 'command', commandId: 'ai:open-panel', label: 'AI 도우미 열기' },
+      { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
     ];
   }
 
@@ -2329,6 +2350,113 @@ export class InputHandler {
   /** 현재 선택 범위를 반환한다 (커맨드 시스템용) */
   getSelection(): { start: DocumentPosition; end: DocumentPosition } | null {
     return this.cursor.getSelectionOrdered();
+  }
+
+  getSelectedText(): string {
+    const selection = this.cursor.getSelectionOrdered();
+    if (!selection) {
+      return '';
+    }
+
+    if (
+      selection.start.parentParaIndex !== undefined &&
+      selection.start.controlIndex !== undefined &&
+      selection.start.cellIndex !== undefined &&
+      selection.start.cellParaIndex !== undefined &&
+      selection.end.cellParaIndex !== undefined
+    ) {
+      return this.wasm.copySelectionInCell(
+        selection.start.sectionIndex,
+        selection.start.parentParaIndex,
+        selection.start.controlIndex,
+        selection.start.cellIndex,
+        selection.start.cellParaIndex,
+        selection.start.charOffset,
+        selection.end.cellParaIndex,
+        selection.end.charOffset,
+      );
+    }
+
+    return this.wasm.copySelection(
+      selection.start.sectionIndex,
+      selection.start.paragraphIndex,
+      selection.start.charOffset,
+      selection.end.paragraphIndex,
+      selection.end.charOffset,
+    );
+  }
+
+  getCurrentParagraphText(): string {
+    const pos = this.cursor.getPosition();
+
+    if (
+      pos.parentParaIndex !== undefined &&
+      pos.controlIndex !== undefined &&
+      pos.cellIndex !== undefined &&
+      pos.cellParaIndex !== undefined
+    ) {
+      return this.wasm.getTextInCell(
+        pos.sectionIndex,
+        pos.parentParaIndex,
+        pos.controlIndex,
+        pos.cellIndex,
+        pos.cellParaIndex,
+        0,
+        65535,
+      );
+    }
+
+    return this.wasm.getTextRange(pos.sectionIndex, pos.paragraphIndex, 0, 65535);
+  }
+
+  getAiTemplateContext(radius = 1): string {
+    const selectionText = this.getSelectedText().trim();
+    if (selectionText) {
+      return selectionText;
+    }
+
+    const pos = this.cursor.getPosition();
+    const blocks: string[] = [];
+
+    if (
+      pos.parentParaIndex !== undefined &&
+      pos.controlIndex !== undefined &&
+      pos.cellIndex !== undefined &&
+      pos.cellParaIndex !== undefined
+    ) {
+      for (let idx = Math.max(0, pos.cellParaIndex - radius); idx <= pos.cellParaIndex + radius; idx += 1) {
+        try {
+          const text = this.wasm.getTextInCell(
+            pos.sectionIndex,
+            pos.parentParaIndex,
+            pos.controlIndex,
+            pos.cellIndex,
+            idx,
+            0,
+            65535,
+          ).trim();
+          if (text) {
+            blocks.push(text);
+          }
+        } catch {
+          // Ignore out-of-range cell paragraphs.
+        }
+      }
+      return blocks.join('\n');
+    }
+
+    for (let idx = Math.max(0, pos.paragraphIndex - radius); idx <= pos.paragraphIndex + radius; idx += 1) {
+      try {
+        const text = this.wasm.getTextRange(pos.sectionIndex, idx, 0, 65535).trim();
+        if (text) {
+          blocks.push(text);
+        }
+      } catch {
+        // Ignore out-of-range paragraphs.
+      }
+    }
+
+    return blocks.join('\n');
   }
 
   /** 지정된 선택 범위에 글자 서식을 적용한다 (커맨드 시스템용) */

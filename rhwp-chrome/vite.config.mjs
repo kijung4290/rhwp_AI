@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-// rhwp-studio를 Chrome 확장용으로 빌드
-// 산출물: rhwp-chrome/dist/ → viewer.html + JS/CSS + WASM + 폰트
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
   root: resolve(__dirname, '..', 'rhwp-studio'),
-  publicDir: false, // public/ 폴더 제외 (samples, images 등 불필요)
+  publicDir: false,
   resolve: {
     alias: {
       '@': resolve(__dirname, '..', 'rhwp-studio', 'src'),
@@ -14,16 +15,14 @@ export default defineConfig({
   },
   build: {
     outDir: resolve(__dirname, 'dist'),
-    emptyDir: true,
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         viewer: resolve(__dirname, '..', 'rhwp-studio', 'index.html'),
       },
     },
-    // WASM inline 방지 — 별도 파일로 유지
     assetsInlineLimit: 0,
   },
-  // 개발 서버 (확장 디버깅용)
   server: {
     host: '0.0.0.0',
     port: 7701,

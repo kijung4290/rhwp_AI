@@ -25,6 +25,12 @@
   "optionsTitle": {
     "message": "rhwp Settings"
   },
+  "optionsSectionGeneral": {
+    "message": "General"
+  },
+  "optionsSectionAi": {
+    "message": "AI Settings"
+  },
   "optionsAutoOpen": {
     "message": "Automatically open HWP/HWPX files in viewer when downloaded"
   },
@@ -39,5 +45,68 @@
   },
   "optionsPrivacy": {
     "message": "Files are never sent to any server. All processing happens locally in your browser."
+  },
+  "optionsAiApiKey": {
+    "message": "OpenAI API Key"
+  },
+  "optionsAiModel": {
+    "message": "Model"
+  },
+  "optionsHintApiKey": {
+    "message": "Your API key is stored securely in your browser and never sent to third parties. Get one at platform.openai.com."
+  },
+  "optionsBtnTest": {
+    "message": "Test Connection"
+  },
+  "optionsBtnClearKey": {
+    "message": "Clear Key"
+  },
+  "optionsTesting": {
+    "message": "Testing..."
+  },
+  "optionsTestSuccess": {
+    "message": "Connection successful! Your API key is valid."
+  },
+  "optionsTestFail": {
+    "message": "Connection failed"
+  },
+  "aiSidePanelTitle": {
+    "message": "rhwp AI Assistant"
+  },
+  "aiPlaceholder": {
+    "message": "Enter a document command..."
+  },
+  "aiSend": {
+    "message": "Send"
+  },
+  "aiCancel": {
+    "message": "Stop"
+  },
+  "aiGenerating": {
+    "message": "Generating..."
+  },
+  "aiErrorNoKey": {
+    "message": "API key not set. Please enter your OpenAI API key in the extension settings."
+  },
+  "aiErrorNetwork": {
+    "message": "A network error occurred."
+  },
+  "aiSuggestionTable": {
+    "message": "Create Table"
+  },
+  "aiSuggestionFormat": {
+    "message": "Apply Format"
+  },
+  "aiSuggestionWrite": {
+    "message": "Write Text"
+  },
+  "aiContextCreateTable": {
+    "message": "Create Table (AI)"
+  },
+  "aiContextFormat": {
+    "message": "Apply Format (AI)"
+  },
+  "aiContextWrite": {
+    "message": "Write Text (AI)"
   }
 }

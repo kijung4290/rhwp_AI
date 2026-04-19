@@ -17,12 +17,14 @@ import { insertCommands } from '@/command/commands/insert';
 import { tableCommands } from '@/command/commands/table';
 import { pageCommands } from '@/command/commands/page';
 import { toolCommands } from '@/command/commands/tool';
+import { aiCommands } from '@/command/commands/ai';
 import { ContextMenu } from '@/ui/context-menu';
 import { CommandPalette } from '@/ui/command-palette';
 import { CellSelectionRenderer } from '@/engine/cell-selection-renderer';
 import { TableObjectRenderer } from '@/engine/table-object-renderer';
 import { TableResizeRenderer } from '@/engine/table-resize-renderer';
 import { Ruler } from '@/view/ruler';
+import { setAiBridgeDeps, executeHwpCtlAction, executeHwpCtlActions } from '@/hwpctl/ai-bridge';
 
 const wasm = new WasmBridge();
 const eventBus = new EventBus();
@@ -77,6 +79,7 @@ registry.registerAll(insertCommands);
 registry.registerAll(tableCommands);
 registry.registerAll(pageCommands);
 registry.registerAll(toolCommands);
+registry.registerAll(aiCommands);
 
 // 상태 바 요소
 const sbMessage = () => document.getElementById('sb-message')!;
@@ -569,3 +572,49 @@ window.addEventListener('message', async (e) => {
     reply(undefined, err.message || String(err));
   }
 });
+
+// ── AI 브릿지 — 사이드패널에서 HwpCtl 액션 실행 요청 수신 ──
+if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  async function setupAiBridge() {
+    setAiBridgeDeps(wasm, inputHandler, eventBus, dispatcher);
+    const currentTab = await chrome.tabs.getCurrent().catch(() => null);
+    const viewerTabId = typeof currentTab?.id === 'number' && currentTab.id > 0 ? currentTab.id : null;
+
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message.targetTabId && viewerTabId && message.targetTabId !== viewerTabId) {
+        return undefined;
+      }
+
+      if (message.type === 'execute-hwpctl-action') {
+        sendResponse(executeHwpCtlAction(message.action));
+        return true;
+      }
+
+      if (message.type === 'execute-hwpctl-actions') {
+        sendResponse({ results: executeHwpCtlActions(message.actions || []) });
+        return true;
+      }
+
+      if (message.type === 'ai-panel-prompt') {
+        console.log('[ai-bridge] Prompt from panel:', message.prompt);
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      return undefined;
+    });
+
+    console.log('[ai-bridge] Chrome 확장 메시지 리스너 등록 완료');
+  }
+
+  // InputHandler/CanvasView 초기화 후 브릿지 설정
+  const waitForInit = setInterval(() => {
+    if (inputHandler) {
+      clearInterval(waitForInit);
+      void setupAiBridge();
+    }
+  }, 100);
+
+  // 5초 타임아웃 (문서 미로드 시)
+  setTimeout(() => clearInterval(waitForInit), 5000);
+}

@@ -6,17 +6,20 @@ import { openViewer } from './sw/viewer-launcher.js';
 import { setupContextMenus } from './sw/context-menus.js';
 import { setupDownloadInterceptor } from './sw/download-interceptor.js';
 import { setupMessageRouter } from './sw/message-router.js';
+import { setupAiProxy } from './sw/ai-proxy.js';
 
 // 확장 설치/업데이트 시 초기화
 chrome.runtime.onInstalled.addListener((details) => {
   setupContextMenus();
+  setupAiProxy();
 
   if (details.reason === 'install') {
-    // 최초 설치 시 기본 설정 저장
     chrome.storage.sync.set({
       autoOpen: true,
       showBadges: true,
-      hoverPreview: true
+      hoverPreview: true,
+      aiModel: 'gpt-4o',
+      aiApiKey: '',
     });
   }
 });
@@ -25,6 +28,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.action.onClicked.addListener(() => {
   openViewer();
 });
+
+// 사이드패널 열기 (뷰어 탭에서)
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
 
 // 다운로드 가로채기
 setupDownloadInterceptor();

@@ -93,6 +93,7 @@
   font-family: sans-serif;
 }
 .icon-grid          { background-position: calc(-40px * 13) calc(-40px * 2); }
+.icon-ai            { background-position: calc(-40px * 6) calc(-40px * 3); }
 .icon-char-shape    { background-position: calc(-40px * 12) calc(-40px * 8); }
 .icon-para-shape    { background-position: calc(-40px * 13) calc(-40px * 8); }
 .icon-table         { background-position: calc(-40px * 2) calc(-40px * 3); }
