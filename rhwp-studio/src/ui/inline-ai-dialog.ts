@@ -5,6 +5,8 @@ type AiMode =
   | 'table'
   | 'format'
   | 'write'
+  | 'report-draft'
+  | 'report-outline'
   | 'rewrite-selection'
   | 'continue-selection'
   | 'fill-template';
@@ -17,11 +19,16 @@ type AiDialogOptions = {
 
 type AiSettings = { aiApiKey?: string; aiModel?: string };
 type AiAction = Record<string, unknown>;
+type ModePresentation = {
+  title: string;
+  hint: string;
+  placeholder: string;
+};
 
 const SYSTEM_PROMPT = `You are an AI assistant for editing HWP documents in rhwp.
 
 Return the answer as a JSON array wrapped in a \`\`\`json code block.
-You may add one short Korean sentence before the JSON block, but no other prose.
+You may add one short Korean sentence before the JSON block, but no extra prose.
 
 Supported actions:
 - replace-selection: { "type": "replace-selection", "text": string }
@@ -39,12 +46,64 @@ Supported actions:
 Rules:
 1. Cell coordinates are zero-based.
 2. Use write-table when the user asks to create a new table.
-3. Use replace-selection when the request is explicitly about rewriting or filling the selected block.
-4. Use insert-text and insert-paragraph in reading order for normal document drafting.
-5. Keep actions practical so they can be applied immediately in the current document.`;
+3. Use replace-selection only when the request is about rewriting or replacing the selected block.
+4. For report requests, prefer a clear structure such as title, background, status, issues, plan, and conclusion.
+5. For outline requests, prefer write-numbered-list or short numbered paragraphs rather than a dense text block.
+6. Use practical formatting only when it improves readability immediately.
+7. Keep the actions ready to apply in the current document without further editing.`;
+
+const MODE_META: Record<AiMode, ModePresentation> = {
+  general: {
+    title: 'AI 문서 도우미',
+    hint: '문서 초안 작성, 선택 내용 수정, 보고서 정리, 양식 채우기를 한 번에 처리할 수 있습니다.',
+    placeholder: '예: 현재 내용을 보고서 형식으로 정리해줘',
+  },
+  table: {
+    title: 'AI 표 작성',
+    hint: '행과 열이 있는 표를 만들고 예시 데이터까지 채우는 요청에 적합합니다.',
+    placeholder: '예: 5행 4열 표를 만들고 항목, 목표, 실적, 비고를 채워줘',
+  },
+  format: {
+    title: 'AI 서식 정리',
+    hint: '현재 문단이나 커서 위치 기준으로 정렬, 줄간격, 강조 같은 서식을 정리합니다.',
+    placeholder: '예: 현재 문단을 보고서 본문처럼 양쪽 정렬과 줄간격 160%로 맞춰줘',
+  },
+  write: {
+    title: 'AI 문서 초안',
+    hint: '회의록, 공지, 안내문처럼 일반 문서를 빠르게 초안 작성할 때 사용합니다.',
+    placeholder: '예: 회의록 초안을 작성해줘',
+  },
+  'report-draft': {
+    title: 'AI 보고서 초안',
+    hint: '보고서 구조에 맞춰 제목, 배경, 현황, 문제점, 추진 계획, 결론을 정리합니다.',
+    placeholder: '예: 현재 메모를 업무보고서 형식으로 정리해줘',
+  },
+  'report-outline': {
+    title: 'AI 번호 개요',
+    hint: '복잡한 메모를 1. 2. 3. 번호 개요 형식으로 압축해 정리합니다.',
+    placeholder: '예: 현재 내용을 번호 개요로 바꿔줘',
+  },
+  'rewrite-selection': {
+    title: 'AI 선택 내용 수정',
+    hint: '선택한 문장을 더 자연스럽고 정확한 표현으로 다듬습니다.',
+    placeholder: '예: 선택한 내용을 공문체로 다듬어줘',
+  },
+  'continue-selection': {
+    title: 'AI 선택 내용 이어쓰기',
+    hint: '선택한 내용의 문맥을 유지하면서 다음 문단까지 자연스럽게 이어 씁니다.',
+    placeholder: '예: 선택한 내용을 바탕으로 결론까지 이어서 작성해줘',
+  },
+  'fill-template': {
+    title: 'AI 양식 채우기',
+    hint: '현재 양식의 제목과 구조를 유지하면서 필요한 내용을 채워 넣습니다.',
+    placeholder: '예: 현재 양식에 분기 실적 내용을 채워줘',
+  },
+};
 
 export class InlineAiDialog {
   private overlay: HTMLDivElement | null = null;
+  private titleEl!: HTMLDivElement;
+  private hintEl!: HTMLDivElement;
   private promptInput!: HTMLTextAreaElement;
   private contextInfo!: HTMLDivElement;
   private resultText!: HTMLDivElement;
@@ -61,14 +120,19 @@ export class InlineAiDialog {
     this.contextText = (options.contextText || '').trim();
     this.ensureBuilt();
     this.currentContent = '';
+
+    const meta = MODE_META[this.currentMode];
+    this.titleEl.textContent = meta.title;
+    this.hintEl.textContent = meta.hint;
+    this.promptInput.placeholder = meta.placeholder;
     this.promptInput.value = options.prompt || getDefaultPrompt(this.currentMode);
     this.resultText.textContent = '';
     this.jsonText.textContent = '';
     this.statusText.textContent = '';
     this.applyButton.disabled = true;
     this.contextInfo.textContent = this.contextText
-      ? `문서 컨텍스트가 함께 전달됩니다.\n${truncateText(this.contextText, 220)}`
-      : '현재 커서 위치를 기준으로 AI 작업을 수행합니다.';
+      ? `문서 컨텍스트\n${truncateText(this.contextText, 260)}`
+      : '현재 커서 위치 또는 문서의 문맥을 기준으로 AI 작업을 수행합니다.';
 
     if (!this.overlay?.isConnected) {
       document.body.appendChild(this.overlay!);
@@ -107,10 +171,9 @@ export class InlineAiDialog {
     titleRow.style.alignItems = 'center';
     titleRow.style.justifyContent = 'space-between';
 
-    const title = document.createElement('div');
-    title.textContent = 'AI 문서 도우미';
-    title.style.fontSize = '18px';
-    title.style.fontWeight = '700';
+    this.titleEl = document.createElement('div');
+    this.titleEl.style.fontSize = '18px';
+    this.titleEl.style.fontWeight = '700';
 
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
@@ -123,13 +186,12 @@ export class InlineAiDialog {
     closeButton.style.cursor = 'pointer';
     closeButton.addEventListener('click', () => this.close());
 
-    titleRow.appendChild(title);
+    titleRow.appendChild(this.titleEl);
     titleRow.appendChild(closeButton);
 
-    const hint = document.createElement('div');
-    hint.textContent = '문서 안에서 바로 초안 작성, 선택 문장 수정, 양식 채우기, 표 생성까지 처리할 수 있습니다.';
-    hint.style.fontSize = '13px';
-    hint.style.color = '#475569';
+    this.hintEl = document.createElement('div');
+    this.hintEl.style.fontSize = '13px';
+    this.hintEl.style.color = '#475569';
 
     this.contextInfo = document.createElement('div');
     this.contextInfo.style.padding = '10px 12px';
@@ -142,7 +204,6 @@ export class InlineAiDialog {
 
     this.promptInput = document.createElement('textarea');
     this.promptInput.rows = 5;
-    this.promptInput.placeholder = '예: 선택한 문장을 공문체로 다듬어줘 / 현재 양식에 맞게 내용을 채워줘';
     this.promptInput.style.width = '100%';
     this.promptInput.style.resize = 'vertical';
     this.promptInput.style.padding = '14px';
@@ -217,7 +278,7 @@ export class InlineAiDialog {
     buttonRow.appendChild(this.applyButton);
 
     panel.appendChild(titleRow);
-    panel.appendChild(hint);
+    panel.appendChild(this.hintEl);
     panel.appendChild(this.contextInfo);
     panel.appendChild(this.promptInput);
     panel.appendChild(this.statusText);
@@ -259,7 +320,7 @@ export class InlineAiDialog {
 
     const settings = await this.getSettings();
     if (!settings.aiApiKey) {
-      this.setStatus('OpenAI API 키가 설정되지 않았습니다. 확장 프로그램 설정에서 API 키를 먼저 입력해 주세요.', true);
+      this.setStatus('OpenAI API 키가 설정되어 있지 않습니다. 확장 프로그램 설정에서 먼저 입력해 주세요.', true);
       return;
     }
 
@@ -292,11 +353,11 @@ export class InlineAiDialog {
       this.applyButton.disabled = actions.length === 0;
 
       if (actions.length === 0) {
-        this.setStatus('생성은 완료됐지만 적용할 JSON 액션을 찾지 못했습니다.', true);
+        this.setStatus('생성은 완료됐지만 적용 가능한 JSON 액션을 찾지 못했습니다.', true);
         return;
       }
 
-      this.setStatus('생성이 완료되었습니다. 내용을 확인한 뒤 문서에 적용해 주세요.', false);
+      this.setStatus('생성이 완료됐습니다. 내용을 확인한 뒤 문서에 적용해 주세요.', false);
     } catch (error: any) {
       this.setStatus(error?.message || 'AI 요청 중 오류가 발생했습니다.', true);
     } finally {
@@ -353,17 +414,21 @@ export class InlineAiDialog {
 function getDefaultPrompt(mode: AiMode) {
   switch (mode) {
     case 'table':
-      return '5행 4열 일정표를 만들어줘. 헤더와 예시 데이터도 채워줘.';
+      return '5행 4열 표를 만들어줘. 헤더와 예시 데이터도 함께 채워줘.';
     case 'format':
-      return '현재 문단을 가운데 정렬하고 글자 크기를 14pt로 바꿔줘.';
+      return '현재 문단을 보고서 본문처럼 양쪽 정렬과 줄간격 160%로 정리해줘.';
     case 'write':
-      return '회의록 초안을 작성해줘. 제목, 일시, 참석자, 회의 내용, 결론을 포함해줘.';
+      return '회의록 초안을 작성해줘. 제목, 일시, 참석자, 주요 논의, 결론을 포함해줘.';
+    case 'report-draft':
+      return '현재 내용을 보고서 형식으로 정리해줘. 제목, 배경, 현황, 문제점, 추진 계획, 결론 순서로 작성해줘.';
+    case 'report-outline':
+      return '현재 내용을 1. 2. 3. 번호 개요 형식으로 정리해줘. 각 항목은 짧고 명확하게 써줘.';
     case 'rewrite-selection':
       return '선택한 내용을 더 자연스럽고 정확하게 다듬어줘.';
     case 'continue-selection':
-      return '선택한 내용을 바탕으로 문장을 자연스럽게 이어서 완성해줘.';
+      return '선택한 내용을 바탕으로 자연스럽게 이어서 완성해줘.';
     case 'fill-template':
-      return '현재 양식을 유지하면서 내가 요청하는 내용으로 채워줘.';
+      return '현재 양식의 구조를 유지하면서 필요한 내용을 채워줘.';
     default:
       return '';
   }
@@ -397,7 +462,30 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nDraft document content for this request with insert-text and insert-paragraph actions: ${input}`,
+        content: `${contextBlock}\n\nDraft normal document content for this request with insert-text and insert-paragraph actions: ${input}`,
+      },
+    ];
+  }
+
+  if (mode === 'report-draft') {
+    return [
+      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `${contextBlock}\n\nWrite this as a structured report. Prefer title, background, status, issues, plan, and conclusion. Use write-formatted-text for headings and numbered or bullet lists when helpful. Request: ${input}`,
+      },
+    ];
+  }
+
+  if (mode === 'report-outline') {
+    const replaceInstruction = contextText
+      ? 'Return a replace-selection action or a short sequence of numbered paragraphs that can replace the current selected block.'
+      : 'Return a write-numbered-list action.';
+    return [
+      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: `${contextBlock}\n\nTurn the content into a clean numbered outline for a report or meeting document. ${replaceInstruction} Request: ${input}`,
       },
     ];
   }
@@ -477,8 +565,8 @@ function appendParsedActions(actions: AiAction[], raw: string) {
       return;
     }
 
-    if (Array.isArray(parsed.actions)) {
-      actions.push(...parsed.actions);
+    if (Array.isArray((parsed as { actions?: AiAction[] }).actions)) {
+      actions.push(...(parsed as { actions: AiAction[] }).actions);
       return;
     }
 

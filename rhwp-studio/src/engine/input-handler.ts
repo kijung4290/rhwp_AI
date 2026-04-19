@@ -1037,6 +1037,8 @@ export class InputHandler {
 
     if (hasSelection) {
       return [
+        { type: 'command', commandId: 'ai:report-outline', label: 'AI로 번호 개요 만들기' },
+        { type: 'command', commandId: 'ai:write-report', label: 'AI로 보고서 형식 정리' },
         { type: 'command', commandId: 'ai:rewrite-selection', label: 'AI로 선택 내용 수정' },
         { type: 'command', commandId: 'ai:complete-selection', label: 'AI로 선택 내용 이어쓰기' },
         { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
@@ -1044,6 +1046,8 @@ export class InputHandler {
     }
 
     return [
+      { type: 'command', commandId: 'ai:write-report', label: 'AI로 보고서 초안 작성' },
+      { type: 'command', commandId: 'ai:report-outline', label: 'AI로 번호 개요 만들기' },
       { type: 'command', commandId: 'ai:open-panel', label: 'AI 도우미 열기' },
       { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
     ];

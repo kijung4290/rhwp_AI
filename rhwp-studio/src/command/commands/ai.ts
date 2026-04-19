@@ -1,6 +1,17 @@
 import type { CommandDef, CommandServices } from '../types';
 import { InlineAiDialog } from '@/ui/inline-ai-dialog';
 
+type AiMode =
+  | 'general'
+  | 'table'
+  | 'format'
+  | 'write'
+  | 'report-draft'
+  | 'report-outline'
+  | 'rewrite-selection'
+  | 'continue-selection'
+  | 'fill-template';
+
 let dialog: InlineAiDialog | null = null;
 
 function getDialog(_services: CommandServices) {
@@ -14,14 +25,7 @@ function openInlineAi(
   services: CommandServices,
   options: {
     prompt?: string;
-    mode?:
-      | 'general'
-      | 'table'
-      | 'format'
-      | 'write'
-      | 'rewrite-selection'
-      | 'continue-selection'
-      | 'fill-template';
+    mode?: AiMode;
     contextText?: string;
   },
 ) {
@@ -30,6 +34,14 @@ function openInlineAi(
 
 function getSelectionText(services: CommandServices) {
   return services.getInputHandler()?.getSelectedText().trim() || '';
+}
+
+function getCurrentParagraphText(services: CommandServices) {
+  return services.getInputHandler()?.getCurrentParagraphText().trim() || '';
+}
+
+function getSelectionOrParagraphContext(services: CommandServices) {
+  return getSelectionText(services) || getCurrentParagraphText(services);
 }
 
 function getTemplateContext(services: CommandServices) {
@@ -54,18 +66,18 @@ export const aiCommands: CommandDef[] = [
     execute(services) {
       openInlineAi(services, {
         mode: 'table',
-        prompt: '5행 4열 일정표를 만들어줘. 헤더와 예시 데이터도 채워줘.',
+        prompt: '5행 4열 표를 만들어줘. 헤더와 예시 데이터도 함께 채워줘.',
       });
     },
   },
   {
     id: 'ai:format-text',
-    label: 'AI로 서식 적용',
+    label: 'AI로 서식 정리',
     canExecute: (ctx) => ctx.hasDocument,
     execute(services) {
       openInlineAi(services, {
         mode: 'format',
-        prompt: '현재 문단을 가운데 정렬하고 글자 크기를 14pt로 바꿔줘.',
+        prompt: '현재 문단을 보고서 본문처럼 정리해줘. 양쪽 정렬과 줄간격 160%를 적용해줘.',
       });
     },
   },
@@ -76,7 +88,31 @@ export const aiCommands: CommandDef[] = [
     execute(services) {
       openInlineAi(services, {
         mode: 'write',
-        prompt: '회의록 초안을 작성해줘. 제목, 일시, 참석자, 회의 내용, 결론을 포함해줘.',
+        prompt: '회의록 초안을 작성해줘. 제목, 일시, 참석자, 주요 논의, 결론을 포함해줘.',
+      });
+    },
+  },
+  {
+    id: 'ai:write-report',
+    label: 'AI로 보고서 초안 작성',
+    canExecute: (ctx) => ctx.hasDocument,
+    execute(services) {
+      openInlineAi(services, {
+        mode: 'report-draft',
+        prompt: '현재 내용을 보고서 형식으로 정리해줘. 제목, 배경, 현황, 문제점, 추진 계획, 결론 순서로 작성해줘.',
+        contextText: getSelectionOrParagraphContext(services),
+      });
+    },
+  },
+  {
+    id: 'ai:report-outline',
+    label: 'AI로 번호 개요 만들기',
+    canExecute: (ctx) => ctx.hasDocument,
+    execute(services) {
+      openInlineAi(services, {
+        mode: 'report-outline',
+        prompt: '현재 내용을 1. 2. 3. 번호 개요 형식으로 정리해줘. 각 항목은 짧고 명확하게 써줘.',
+        contextText: getSelectionOrParagraphContext(services),
       });
     },
   },
@@ -111,7 +147,7 @@ export const aiCommands: CommandDef[] = [
     execute(services) {
       openInlineAi(services, {
         mode: 'fill-template',
-        prompt: '현재 양식을 유지하면서 내가 요청하는 내용으로 채워줘.',
+        prompt: '현재 양식의 구조를 유지하면서 필요한 내용을 채워줘.',
         contextText: getTemplateContext(services),
       });
     },

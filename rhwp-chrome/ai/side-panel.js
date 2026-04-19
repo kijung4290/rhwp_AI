@@ -1,8 +1,3 @@
-// rhwp AI side panel
-// - Sends prompts through the service worker
-// - Renders streamed responses
-// - Applies parsed actions to the active viewer tab
-
 import { parseAiResponse } from './command-parser.js';
 import { PROMPTS, SUGGESTIONS } from './prompt-templates.js';
 
@@ -19,13 +14,12 @@ async function init() {
   applyLocale(lang);
 
   $('panelTitle').textContent = chrome.i18n.getMessage('aiSidePanelTitle');
-  $('sugTable').textContent = chrome.i18n.getMessage('aiSuggestionTable');
-  $('sugFormat').textContent = chrome.i18n.getMessage('aiSuggestionFormat');
-  $('sugWrite').textContent = chrome.i18n.getMessage('aiSuggestionWrite');
   $('sendLabel').textContent = chrome.i18n.getMessage('aiSend');
   $('cancelLabel').textContent = chrome.i18n.getMessage('aiCancel');
   $('executeLabel').textContent = lang === 'ko' ? '적용' : 'Apply';
   $('userInput').placeholder = chrome.i18n.getMessage('aiPlaceholder');
+
+  renderSuggestions(lang);
 
   const settingsBtn = $('settingsBtn');
   if (settingsBtn) {
@@ -33,15 +27,6 @@ async function init() {
   }
 
   await refreshApiKeyWarning(lang);
-
-  document.querySelectorAll('.suggestion-btn').forEach((button) => {
-    button.addEventListener('click', () => {
-      const suggestion = SUGGESTIONS.find((item) => item.id === button.dataset.suggestion);
-      if (!suggestion) return;
-      $('userInput').value = suggestion.prompt;
-      handleSend();
-    });
-  });
 
   $('sendBtn').addEventListener('click', handleSend);
   $('cancelBtn').addEventListener('click', handleCancel);
@@ -66,6 +51,27 @@ async function init() {
 
 function applyLocale(lang) {
   document.documentElement.lang = lang;
+}
+
+function renderSuggestions(lang) {
+  const container = $('suggestions');
+  container.textContent = '';
+
+  for (const suggestion of SUGGESTIONS) {
+    const button = document.createElement('button');
+    button.className = 'suggestion-btn';
+    button.dataset.suggestion = suggestion.id;
+    button.innerHTML = `
+      <span class="suggestion-icon">${suggestion.icon}</span>
+      <span class="suggestion-label">${lang === 'ko' ? suggestion.labelKo : suggestion.labelEn}</span>
+    `;
+    button.addEventListener('click', () => {
+      $('userInput').value = suggestion.prompt;
+      $('sendBtn').disabled = false;
+      handleSend();
+    });
+    container.appendChild(button);
+  }
 }
 
 function createRequestId() {
@@ -137,7 +143,7 @@ async function handleSend() {
       apiKey: settings.aiApiKey,
       model: settings.aiModel,
       messages: promptData.messages,
-      temperature: 0.7,
+      temperature: 0.55,
     });
 
     if (response?.error) {
@@ -215,42 +221,38 @@ function resetGenerationState() {
 }
 
 function determinePrompt(input) {
-  const lower = input.toLowerCase();
+  const normalized = normalizeText(input);
+  const tableSuggestion = findMatchingSuggestion(normalized, ['table']);
+  if (tableSuggestion) return PROMPTS[tableSuggestion.promptBuilder](input);
 
-  if (
-    lower.includes('table') ||
-    lower.includes('표') ||
-    lower.includes('셀') ||
-    lower.includes('행') ||
-    lower.includes('열')
-  ) {
-    return PROMPTS.createTable(input);
-  }
+  const outlineSuggestion = findMatchingSuggestion(normalized, ['outline']);
+  if (outlineSuggestion) return PROMPTS[outlineSuggestion.promptBuilder](input);
 
-  if (
-    lower.includes('format') ||
-    lower.includes('bold') ||
-    lower.includes('align') ||
-    lower.includes('정렬') ||
-    lower.includes('서식') ||
-    lower.includes('굵게') ||
-    lower.includes('글자')
-  ) {
-    return PROMPTS.formatDocument(input);
-  }
+  const reportSuggestion = findMatchingSuggestion(normalized, ['report']);
+  if (reportSuggestion) return PROMPTS[reportSuggestion.promptBuilder](input);
 
-  if (
-    lower.includes('write') ||
-    lower.includes('text') ||
-    lower.includes('문서') ||
-    lower.includes('작성') ||
-    lower.includes('초안') ||
-    lower.includes('문안')
-  ) {
-    return PROMPTS.writeText(input);
-  }
+  const formatSuggestion = findMatchingSuggestion(normalized, ['format']);
+  if (formatSuggestion) return PROMPTS[formatSuggestion.promptBuilder](input);
+
+  const writeSuggestion = findMatchingSuggestion(normalized, ['write']);
+  if (writeSuggestion) return PROMPTS[writeSuggestion.promptBuilder](input);
 
   return PROMPTS.general(input);
+}
+
+function normalizeText(value) {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function findMatchingSuggestion(normalizedInput, priorityIds) {
+  for (const id of priorityIds) {
+    const suggestion = SUGGESTIONS.find((item) => item.id === id);
+    if (!suggestion) continue;
+    if (suggestion.keywords.some((keyword) => normalizedInput.includes(keyword.toLowerCase()))) {
+      return suggestion;
+    }
+  }
+  return null;
 }
 
 async function findViewerTab() {
@@ -262,13 +264,13 @@ async function findViewerTab() {
 async function handleExecute() {
   const actions = parseAiResponse(currentAiContent);
   if (actions.length === 0) {
-    addMessage('error', 'AI 응답에서 실행 가능한 JSON 명령을 찾지 못했습니다.');
+    addMessage('error', 'AI 응답에서 적용 가능한 JSON 명령을 찾지 못했습니다.');
     return;
   }
 
   const viewerTab = await findViewerTab();
   if (!viewerTab?.id) {
-    addMessage('error', '열려 있는 rhwp 문서를 찾지 못했습니다. 먼저 문서를 연 뒤 다시 시도하세요.');
+    addMessage('error', '열려 있는 rhwp 문서를 찾지 못했습니다. 먼저 문서를 연 뒤 다시 시도해 주세요.');
     return;
   }
 
@@ -345,7 +347,7 @@ function addMessageRaw(type) {
 
 function renderAiMessage(content) {
   const { text, jsonBlocks } = extractJsonBlocks(content);
-  const msgEl = addMessage('ai', text);
+  const msgEl = addMessage('ai', text || '(JSON action only)');
 
   for (const block of jsonBlocks) {
     const pre = document.createElement('div');
@@ -418,27 +420,23 @@ function showExecuteIfActions() {
   const actions = parseAiResponse(currentAiContent);
   if (actions.length > 0) {
     $('executeBtn').style.display = 'inline-flex';
+  } else {
+    $('executeBtn').style.display = 'none';
   }
 }
 
 async function checkPendingPrompt() {
   try {
-    const data = await chrome.storage.local.get('pendingAiPrompt');
-    if (!data.pendingAiPrompt) return;
+    const response = await sendRuntimeMessage({ type: 'consume-ai-panel-prompt' });
+    const prompt = String(response?.prompt || '').trim();
+    if (!prompt) return;
 
-    $('userInput').value = data.pendingAiPrompt;
-    await chrome.storage.local.remove('pendingAiPrompt');
+    $('userInput').value = prompt;
     $('sendBtn').disabled = false;
-    handleSend();
+    await handleSend();
   } catch {
-    // Ignore transient storage errors.
+    // Ignore missing prompt state.
   }
 }
-
-window.addEventListener('focus', async () => {
-  if (!isGenerating && !$('userInput').value.trim()) {
-    await checkPendingPrompt();
-  }
-});
 
 init();

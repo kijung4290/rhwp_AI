@@ -1,82 +1,127 @@
-// 프롬프트 템플릿 — 사용자 입력을 구조화된 AI 프롬프트로 변환
-// 각 템플릿은 system 프롬프트와 예시 응답 형식을 포함한다.
+const SYSTEM_PROMPT = `You are an AI assistant for editing HWP documents in rhwp.
 
-const SYSTEM_PROMPT = `당신은 HWP(한글 문서) 편집 어시스턴트입니다. 사용자의 요청을 분석하여 rhwp HwpCtl 호환 JSON 액션 시퀀스를 생성하세요.
+Return the answer as a JSON array wrapped in a \`\`\`json code block.
+You may add one short Korean sentence before the JSON block, but no extra prose.
 
-## 사용 가능한 액션 타입
+Supported actions:
+- "table-create": { "type": "table-create", "rows": number, "cols": number, "colWidth"?: number, "rowHeight"?: number, "borderType"?: number }
+- "table-set-cell-text": { "type": "table-set-cell-text", "row": number, "col": number, "text": string }
+- "table-merge-cells": { "type": "table-merge-cells", "startRow": number, "startCol": number, "endRow": number, "endCol": number }
+- "table-insert-row": { "type": "table-insert-row", "row"?: number, "below"?: boolean }
+- "table-insert-column": { "type": "table-insert-column", "col"?: number, "right"?: boolean }
+- "table-set-formula": { "type": "table-set-formula", "row": number, "col": number, "formula": string }
+- "insert-text": { "type": "insert-text", "text": string }
+- "insert-paragraph": { "type": "insert-paragraph" }
+- "insert-page-break": { "type": "insert-page-break" }
+- "insert-tab": { "type": "insert-tab" }
+- "char-shape": { "type": "char-shape", "bold"?: boolean, "italic"?: boolean, "underline"?: boolean, "strikeout"?: boolean, "fontSize"?: number, "fontName"?: string, "textColor"?: string, "superscript"?: boolean, "subscript"?: boolean }
+- "para-shape": { "type": "para-shape", "align"?: number, "lineSpacing"?: number, "spaceBefore"?: number, "spaceAfter"?: number, "indentLeft"?: number, "indentRight"?: number, "firstLineIndent"?: number }
+- "write-table": { "type": "write-table", "rows": number, "cols": number, "cells": [{ "row": number, "col": number, "text": string }], "header"?: boolean, "headerBold"?: boolean }
+- "write-formatted-text": { "type": "write-formatted-text", "text": string, "format"?: { "bold"?: boolean, "italic"?: boolean, "underline"?: boolean }, "paraFormat"?: { "align"?: number, "lineSpacing"?: number, "spaceBefore"?: number, "spaceAfter"?: number } }
+- "write-bullet-list": { "type": "write-bullet-list", "items": string[] }
+- "write-numbered-list": { "type": "write-numbered-list", "items": string[] }
 
-### 표 (Table)
-- "table-create": { type, rows, cols, colWidth?, rowHeight?, borderType? } — 표 생성
-- "table-set-cell-text": { type, row, col, text } — 셀 텍스트 설정
-- "table-merge-cells": { type, startRow, startCol, endRow, endCol } — 셀 병합
-- "table-insert-row": { type } — 행 삽입
-- "table-insert-column": { type } — 열 삽입
-- "table-set-formula": { type, row, col, formula } — 셀 수식 (예: "SUM(A1:A5)")
+Guidance:
+1. Use zero-based row and column coordinates.
+2. Prefer "write-table" for creating a new table from scratch.
+3. For report drafting, prefer a clear structure such as title, background, current status, issues, plan, and conclusion.
+4. For outline requests, prefer "write-numbered-list" or numbered paragraphs rather than a plain block of text.
+5. Use "write-formatted-text" for headings or emphasis, and keep formatting practical.
+6. Keep the actions ready to apply immediately in the current document.
+7. Always return valid JSON inside a \`\`\`json block.`;
 
-### 텍스트
-- "insert-text": { type, text } — 텍스트 삽입
-- "insert-paragraph": { type } — 문단 나누기 (Enter)
-- "insert-page-break": { type } — 쪽 나누기
+function createMessages(instruction, example) {
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: instruction },
+  ];
 
-### 글자 서식
-- "char-shape": { type, bold?, italic?, underline?, strikeout?, fontSize?, fontName?, textColor?, superscript?, subscript? }
+  if (example) {
+    messages.push({ role: 'assistant', content: example });
+  }
 
-### 문단 서식
-- "para-shape": { type, align?, lineSpacing?, spaceBefore?, spaceAfter?, indentLeft?, indentRight?, firstLineIndent? }
-  - align: 0=Left, 1=Center, 2=Right, 3=Justify, 4=Distribute
-
-### 복합 액션 (편의)
-- "write-table": { type, rows, cols, cells: [{ row, col, text }], header?, headerBold? }
-- "write-formatted-text": { type, text, format?: { bold?, italic?, fontSize?, fontName? }, paraFormat?: { align?, lineSpacing? } }
-- "write-bullet-list": { type, items: string[] }
-- "write-numbered-list": { type, items: string[] }
-
-## 응답 규칙
-1. 반드시 JSON 배열 형식으로만 응답하세요.
-2. 각 액션은 type 필드를 반드시 포함해야 합니다.
-3. 한국어 텍스트를 사용하세요.
-4. 셀 좌표는 0부터 시작합니다.
-5. fontSize는 pt 단위입니다.
-6. lineSpacing은 % (예: 160 = 160%).
-7. 표의 첫 행은 보통 헤더이므로 볼드 적용을 권장합니다.
-8. 응답은 \`\`\`json 블록으로 감싸세요.`;
+  return { messages };
+}
 
 export const PROMPTS = {
   system: SYSTEM_PROMPT,
 
-  createTable: (description) => ({
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `다음 표를 만들어주세요: ${description}\n\nwrite-table 액션으로 응답하세요.` },
-      { role: 'assistant', content: '```json\n[\n  {\n    "type": "write-table",\n    "rows": 3,\n    "cols": 4,\n    "cells": [\n      { "row": 0, "col": 0, "text": "항목" },\n      { "row": 0, "col": 1, "text": "1분기" },\n      { "row": 0, "col": 2, "text": "2분기" },\n      { "row": 0, "col": 3, "text": "합계" },\n      { "row": 1, "col": 0, "text": "매출" },\n      { "row": 1, "col": 3, "text": "" },\n      { "row": 2, "col": 0, "text": "영업이익" },\n      { "row": 2, "col": 3, "text": "" }\n    ],\n    "header": true,\n    "headerBold": true\n  }\n]\n```' },
-    ],
-  }),
+  createTable: (description) =>
+    createMessages(
+      `Create a table for this request: ${description}\n\nReturn a write-table action.`,
+      '```json\n[\n  {\n    "type": "write-table",\n    "rows": 3,\n    "cols": 4,\n    "header": true,\n    "headerBold": true,\n    "cells": [\n      { "row": 0, "col": 0, "text": "항목" },\n      { "row": 0, "col": 1, "text": "1분기" },\n      { "row": 0, "col": 2, "text": "2분기" },\n      { "row": 0, "col": 3, "text": "비고" },\n      { "row": 1, "col": 0, "text": "매출" },\n      { "row": 2, "col": 0, "text": "영업이익" }\n    ]\n  }\n]\n```',
+    ),
 
-  formatDocument: (description) => ({
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `현재 커서 위치의 텍스트에 다음 서식을 적용해주세요: ${description}\n\nchar-shape 및/또는 para-shape 액션으로 응답하세요.` },
-    ],
-  }),
+  formatDocument: (description) =>
+    createMessages(
+      `Apply formatting near the current cursor or paragraph: ${description}\n\nReturn char-shape and/or para-shape actions only.`,
+    ),
 
-  writeText: (description) => ({
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `다음 내용을 문서에 작성해주세요: ${description}\n\ninsert-text, insert-paragraph, write-formatted-text 등의 액션으로 응답하세요. 문단 구조를 포함하세요.` },
-    ],
-  }),
+  writeText: (description) =>
+    createMessages(
+      `Draft document content for this request: ${description}\n\nUse insert-text, insert-paragraph, and write-formatted-text actions in document order.`,
+    ),
 
-  general: (userInput) => ({
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userInput },
-    ],
-  }),
+  writeReport: (description) =>
+    createMessages(
+      `Write this as a structured report document: ${description}\n\nPrefer a title, short section headings, numbered or bullet lists when helpful, and concise report-style paragraphs.`,
+      '```json\n[\n  {\n    "type": "write-formatted-text",\n    "text": "업무 추진 보고",\n    "format": { "bold": true },\n    "paraFormat": { "align": 1, "spaceAfter": 12 }\n  },\n  { "type": "insert-paragraph" },\n  {\n    "type": "write-numbered-list",\n    "items": [\n      "배경: 사업 추진 필요성과 목적 정리",\n      "현황: 현재 진행 상태와 주요 수치 정리",\n      "문제점: 확인된 이슈와 원인 정리",\n      "추진 계획: 다음 단계 일정과 담당자 정리",\n      "결론: 요청 사항과 기대 효과 정리"\n    ]\n  }\n]\n```',
+    ),
+
+  writeOutline: (description) =>
+    createMessages(
+      `Turn this into a clean numbered outline for a report or meeting document: ${description}\n\nPrefer write-numbered-list. Keep each item short and scannable.`,
+      '```json\n[\n  {\n    "type": "write-numbered-list",\n    "items": [\n      "배경",\n      "현황",\n      "문제점",\n      "개선 방안",\n      "추진 일정"\n    ]\n  }\n]\n```',
+    ),
+
+  general: (userInput) =>
+    createMessages(`User request: ${userInput}`),
 };
 
-// 사이드패널 제안 버튼 목록
 export const SUGGESTIONS = [
-  { id: 'table', icon: '⊞', labelKo: '표 만들기', labelEn: 'Create Table', prompt: '세금 계산서 양식 표를 만들어주세요. 5행 4열로, 헤더에 품목, 단가, 수량, 금액을 넣고 샘플 데이터를 채워주세요.' },
-  { id: 'format', icon: 'Aa', labelKo: '서식 적용', labelEn: 'Apply Format', prompt: '현재 문단을 가운데 정렬하고 글자 크기를 14pt, 줄간격 160%로 설정해주세요.' },
-  { id: 'write', icon: '✎', labelKo: '글 작성', labelEn: 'Write Text', prompt: '회의록 양식을 작성해주세요. 제목, 날짜, 참석자, 안건, 결론 항목을 포함하세요.' },
+  {
+    id: 'table',
+    icon: '▦',
+    labelKo: '표 만들기',
+    labelEn: 'Create Table',
+    prompt: '분기별 실적을 정리하는 4열 표를 만들어줘. 항목, 목표, 실적, 비고를 포함해줘.',
+    keywords: ['table', '표', '셀', '행', '열'],
+    promptBuilder: 'createTable',
+  },
+  {
+    id: 'format',
+    icon: 'Aa',
+    labelKo: '서식 정리',
+    labelEn: 'Format',
+    prompt: '현재 문단을 보고서 본문처럼 정리해줘. 양쪽 정렬, 줄간격 160%, 문단 아래 간격을 적용해줘.',
+    keywords: ['format', 'bold', 'align', 'style', '서식', '정렬', '강조', '글씨'],
+    promptBuilder: 'formatDocument',
+  },
+  {
+    id: 'write',
+    icon: '✍',
+    labelKo: '문서 작성',
+    labelEn: 'Write',
+    prompt: '회의록 초안을 작성해줘. 제목, 일시, 참석자, 주요 논의, 결론 항목을 포함해줘.',
+    keywords: ['write', 'draft', 'text', '문서', '작성', '초안', '회의록'],
+    promptBuilder: 'writeText',
+  },
+  {
+    id: 'report',
+    icon: '📄',
+    labelKo: '보고서 초안',
+    labelEn: 'Report Draft',
+    prompt: '현재 내용을 보고서 형식으로 정리해줘. 제목, 배경, 현황, 문제점, 추진 계획, 결론 순서로 작성해줘.',
+    keywords: ['report', '보고서', '기안', '품의', '요약 보고', '업무보고'],
+    promptBuilder: 'writeReport',
+  },
+  {
+    id: 'outline',
+    icon: '1.',
+    labelKo: '번호 개요',
+    labelEn: 'Numbered Outline',
+    prompt: '현재 내용을 1. 2. 3. 번호 개요 형식으로 정리해줘. 각 항목은 짧고 명확하게 써줘.',
+    keywords: ['outline', 'agenda', 'number', 'list', '개요', '번호', '목차', '순서'],
+    promptBuilder: 'writeOutline',
+  },
 ];

@@ -110,6 +110,7 @@ body {
 
 .suggestions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
@@ -139,6 +140,10 @@ body {
 
 .suggestion-icon {
   font-size: 15px;
+}
+
+.suggestion-label {
+  font-weight: 500;
 }
 
 /* ─── 채팅 ─── */
@@ -303,6 +308,9 @@ body {
   align-items: center;
   gap: 4px;
   padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
 }
 
 .typing-dot {

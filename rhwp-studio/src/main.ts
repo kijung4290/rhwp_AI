@@ -137,6 +137,7 @@ async function initialize(): Promise<void> {
     );
 
     new MenuBar(document.getElementById('menu-bar')!, eventBus, dispatcher);
+    ensureAiToolbarButtons();
 
     // 툴바 내 data-cmd 버튼 클릭 → 커맨드 디스패치
     document.querySelectorAll('.tb-btn[data-cmd]').forEach(btn => {
@@ -196,6 +197,41 @@ async function initialize(): Promise<void> {
  * 전역 단축키 핸들러 — InputHandler.active 여부와 무관하게 동작해야 하는 단축키.
  * 예: 문서 미로드 상태에서도 Alt+N(새 문서), Ctrl+O(열기) 등.
  */
+function ensureAiToolbarButtons(): void {
+  const aiPanelButton = document.getElementById('tb-ai-open-panel');
+  if (!aiPanelButton?.parentElement) return;
+
+  const aiGroup = aiPanelButton.parentElement;
+  const definitions = [
+    {
+      id: 'tb-ai-write-report',
+      commandId: 'ai:write-report',
+      title: 'AI로 보고서 초안 작성',
+      iconText: 'R',
+      labelHtml: 'AI<br/>보고서',
+    },
+    {
+      id: 'tb-ai-report-outline',
+      commandId: 'ai:report-outline',
+      title: 'AI로 번호 개요 만들기',
+      iconText: '1.',
+      labelHtml: 'AI<br/>개요',
+    },
+  ];
+
+  for (const definition of definitions) {
+    if (document.getElementById(definition.id)) continue;
+
+    const button = document.createElement('button');
+    button.className = 'tb-btn';
+    button.id = definition.id;
+    button.title = definition.title;
+    button.dataset.cmd = definition.commandId;
+    button.innerHTML = `<span class="tb-icon-text">${definition.iconText}</span><span class="tb-label">${definition.labelHtml}</span>`;
+    aiGroup.insertBefore(button, aiPanelButton);
+  }
+}
+
 function setupGlobalShortcuts(): void {
   document.addEventListener('keydown', (e) => {
     // input/textarea 등 편집 가능 요소 내부에서는 무시
