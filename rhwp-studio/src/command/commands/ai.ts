@@ -27,9 +27,13 @@ function openInlineAi(
     prompt?: string;
     mode?: AiMode;
     contextText?: string;
+    documentProfile?: string;
   },
 ) {
-  getDialog(services).open(options);
+  getDialog(services).open({
+    ...options,
+    documentProfile: options.documentProfile ?? getDocumentProfile(services),
+  });
 }
 
 function getSelectionText(services: CommandServices) {
@@ -47,6 +51,10 @@ function getSelectionOrParagraphContext(services: CommandServices) {
 function getTemplateContext(services: CommandServices) {
   const inputHandler = services.getInputHandler();
   return inputHandler?.getAiTemplateContext(2).trim() || inputHandler?.getCurrentParagraphText().trim() || '';
+}
+
+function getDocumentProfile(services: CommandServices) {
+  return services.getInputHandler()?.getAiDocumentProfile().trim() || '';
 }
 
 export const aiCommands: CommandDef[] = [

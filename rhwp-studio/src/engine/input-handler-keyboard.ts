@@ -919,6 +919,20 @@ export function handleCtrlKey(this: any, e: KeyboardEvent): void {
 }
 
 export function handleSelectAll(this: any): void {
+  if (this.cursor.isInTableObjectSelection() || this.cursor.isInPictureObjectSelection()) {
+    selectEntireDocument(this);
+    return;
+  }
+
+  const currentParagraphRange = getCurrentParagraphRange(this);
+  if (isSameRange(this.cursor.getSelectionOrdered(), currentParagraphRange)) {
+    selectEntireDocument(this);
+    return;
+  }
+
+  if (selectCurrentElement(this)) {
+    return;
+  }
   // anchor를 문서 시작, focus를 문서 끝으로 설정
   this.cursor.moveTo({ sectionIndex: 0, paragraphIndex: 0, charOffset: 0 });
   this.cursor.setAnchor();
@@ -1244,14 +1258,148 @@ function clearAllControlSelection(self: any): void {
   if (self.cursor.isInTableObjectSelection()) {
     self.cursor.exitTableObjectSelection();
     self.tableObjectRenderer?.clear();
+    self.eventBus?.emit('table-object-selection-changed', false);
   }
   if (self.cursor.isInPictureObjectSelection()) {
     self.cursor.exitPictureObjectSelection();
     self.pictureObjectRenderer?.clear();
+    self.eventBus?.emit('picture-object-selection-changed', false);
   }
   if (self.cursor.hasSelection()) {
     self.cursor.clearSelection();
   }
+}
+
+function comparePositions(a: DocumentPosition, b: DocumentPosition): number {
+  const aInCell = a.parentParaIndex !== undefined;
+  const bInCell = b.parentParaIndex !== undefined;
+
+  if (aInCell && bInCell) {
+    if (a.parentParaIndex !== b.parentParaIndex) return a.parentParaIndex! < b.parentParaIndex! ? -1 : 1;
+    if (a.controlIndex !== b.controlIndex) return a.controlIndex! < b.controlIndex! ? -1 : 1;
+    if (a.cellIndex !== b.cellIndex) return a.cellIndex! < b.cellIndex! ? -1 : 1;
+    if (a.cellParaIndex !== b.cellParaIndex) return a.cellParaIndex! < b.cellParaIndex! ? -1 : 1;
+    if (a.charOffset !== b.charOffset) return a.charOffset < b.charOffset ? -1 : 1;
+    return 0;
+  }
+
+  if (!aInCell && !bInCell) {
+    if (a.sectionIndex !== b.sectionIndex) return a.sectionIndex < b.sectionIndex ? -1 : 1;
+    if (a.paragraphIndex !== b.paragraphIndex) return a.paragraphIndex < b.paragraphIndex ? -1 : 1;
+    if (a.charOffset !== b.charOffset) return a.charOffset < b.charOffset ? -1 : 1;
+    return 0;
+  }
+
+  const aParaRef = aInCell ? a.parentParaIndex! : a.paragraphIndex;
+  const bParaRef = bInCell ? b.parentParaIndex! : b.paragraphIndex;
+  if (aParaRef !== bParaRef) return aParaRef < bParaRef ? -1 : 1;
+  return aInCell ? 1 : -1;
+}
+
+function isSameRange(
+  actual: { start: DocumentPosition; end: DocumentPosition } | null,
+  expected: { start: DocumentPosition; end: DocumentPosition } | null,
+): boolean {
+  if (!actual || !expected) return false;
+  return comparePositions(actual.start, expected.start) === 0
+    && comparePositions(actual.end, expected.end) === 0;
+}
+
+function selectTextRange(
+  self: any,
+  start: DocumentPosition,
+  end: DocumentPosition,
+): void {
+  self.cursor.clearSelection();
+  self.cursor.moveTo(start);
+  self.cursor.setAnchor();
+  self.cursor.moveTo(end);
+  self.updateCaret();
+}
+
+function selectEntireDocument(self: any): void {
+  const endPosition = (() => {
+    self.cursor.moveToDocumentEnd();
+    return self.cursor.getPosition();
+  })();
+
+  clearAllControlSelection(self);
+  selectTextRange(
+    self,
+    { sectionIndex: 0, paragraphIndex: 0, charOffset: 0 },
+    endPosition,
+  );
+}
+
+function getCurrentParagraphRange(self: any): { start: DocumentPosition; end: DocumentPosition } | null {
+  const pos = self.cursor.getPosition();
+  if (pos.parentParaIndex !== undefined || pos.isTextBox) {
+    return null;
+  }
+
+  const paraLen = self.wasm.getParagraphLength(pos.sectionIndex, pos.paragraphIndex);
+  return {
+    start: {
+      sectionIndex: pos.sectionIndex,
+      paragraphIndex: pos.paragraphIndex,
+      charOffset: 0,
+    },
+    end: {
+      sectionIndex: pos.sectionIndex,
+      paragraphIndex: pos.paragraphIndex,
+      charOffset: paraLen,
+    },
+  };
+}
+
+function selectCurrentElement(self: any): boolean {
+  if (self.cursor.isInCellSelectionMode() || (self.cursor.isInCell() && !self.cursor.isInTextBox())) {
+    clearAllControlSelection(self);
+    self.cursor.exitCellSelectionMode?.();
+    self.cellSelectionRenderer?.clear();
+    if (self.cursor.enterTableObjectSelection()) {
+      self.caret.hide();
+      self.selectionRenderer.clear();
+      self.renderTableObjectSelection();
+      self.eventBus.emit('table-object-selection-changed', true);
+      return true;
+    }
+  }
+
+  if (self.cursor.isInTextBox()) {
+    const pos = self.cursor.getPosition();
+    if (pos.parentParaIndex === undefined || pos.controlIndex === undefined) return false;
+
+    let objectType: 'image' | 'shape' = 'shape';
+    try {
+      self.wasm.getPictureProperties(pos.sectionIndex, pos.parentParaIndex, pos.controlIndex);
+      objectType = 'image';
+    } catch {
+      objectType = 'shape';
+    }
+
+    clearAllControlSelection(self);
+    self.cursor.enterPictureObjectSelectionDirect(
+      pos.sectionIndex,
+      pos.parentParaIndex,
+      pos.controlIndex,
+      objectType,
+      pos.cellIndex,
+      pos.cellParaIndex,
+    );
+    self.caret.hide();
+    self.selectionRenderer.clear();
+    self.renderPictureObjectSelection();
+    self.eventBus.emit('picture-object-selection-changed', true);
+    return true;
+  }
+
+  const paragraphRange = getCurrentParagraphRange(self);
+  if (!paragraphRange) return false;
+
+  clearAllControlSelection(self);
+  selectTextRange(self, paragraphRange.start, paragraphRange.end);
+  return true;
 }
 
 /** F11: 이전 방향 가장 가까운 컨트롤 선택 */

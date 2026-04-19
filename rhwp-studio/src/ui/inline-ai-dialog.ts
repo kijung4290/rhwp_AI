@@ -15,6 +15,7 @@ type AiDialogOptions = {
   prompt?: string;
   mode?: AiMode;
   contextText?: string;
+  documentProfile?: string;
 };
 
 type AiSettings = { aiApiKey?: string; aiModel?: string };
@@ -50,7 +51,8 @@ Rules:
 4. For report requests, prefer a clear structure such as title, background, status, issues, plan, and conclusion.
 5. For outline requests, prefer write-numbered-list or short numbered paragraphs rather than a dense text block.
 6. Use practical formatting only when it improves readability immediately.
-7. Keep the actions ready to apply in the current document without further editing.`;
+7. Keep the actions ready to apply in the current document without further editing.
+8. When a document profile is provided, match its tone, section structure, numbering, emphasis, and element usage unless the user requests a different style.`;
 
 const MODE_META: Record<AiMode, ModePresentation> = {
   general: {
@@ -114,10 +116,12 @@ export class InlineAiDialog {
   private currentMode: AiMode = 'general';
   private currentContent = '';
   private contextText = '';
+  private documentProfile = '';
 
   open(options: AiDialogOptions = {}) {
     this.currentMode = options.mode || 'general';
     this.contextText = (options.contextText || '').trim();
+    this.documentProfile = (options.documentProfile || '').trim();
     this.ensureBuilt();
     this.currentContent = '';
 
@@ -130,9 +134,14 @@ export class InlineAiDialog {
     this.jsonText.textContent = '';
     this.statusText.textContent = '';
     this.applyButton.disabled = true;
-    this.contextInfo.textContent = this.contextText
-      ? `문서 컨텍스트\n${truncateText(this.contextText, 260)}`
-      : '현재 커서 위치 또는 문서의 문맥을 기준으로 AI 작업을 수행합니다.';
+    const infoBlocks: string[] = [];
+    if (this.documentProfile) {
+      infoBlocks.push(`문서 분석 요약\n${truncateText(this.documentProfile, 420)}`);
+    }
+    if (this.contextText) {
+      infoBlocks.push(`현재 컨텍스트\n${truncateText(this.contextText, 260)}`);
+    }
+    this.contextInfo.textContent = infoBlocks.join('\n\n') || '현재 커서 위치 또는 문서의 문맥을 기준으로 AI 작업을 수행합니다.';
 
     if (!this.overlay?.isConnected) {
       document.body.appendChild(this.overlay!);
@@ -335,7 +344,7 @@ export class InlineAiDialog {
         type: 'ai-chat',
         apiKey: settings.aiApiKey,
         model: settings.aiModel || 'gpt-4o',
-        messages: buildPromptMessages(input, this.currentMode, this.contextText),
+        messages: buildPromptMessages(input, this.currentMode, this.contextText, this.documentProfile),
         temperature: 0.4,
       });
 
@@ -434,7 +443,10 @@ function getDefaultPrompt(mode: AiMode) {
   }
 }
 
-function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
+function buildPromptMessages(input: string, mode: AiMode, contextText: string, documentProfile: string) {
+  const profileBlock = documentProfile
+    ? `Document profile:\n"""\n${documentProfile}\n"""`
+    : 'Document profile: (none)';
   const contextBlock = contextText ? `Document context:\n"""\n${contextText}\n"""` : 'Document context: (none)';
 
   if (mode === 'table') {
@@ -442,7 +454,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nCreate a table for this request and return a write-table action: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nCreate a table for this request and return a write-table action: ${input}`,
       },
     ];
   }
@@ -452,7 +464,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nApply formatting at the current cursor location or current paragraph: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nApply formatting at the current cursor location or current paragraph: ${input}`,
       },
     ];
   }
@@ -462,7 +474,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nDraft normal document content for this request with insert-text and insert-paragraph actions: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nDraft normal document content for this request with insert-text and insert-paragraph actions: ${input}`,
       },
     ];
   }
@@ -472,7 +484,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nWrite this as a structured report. Prefer title, background, status, issues, plan, and conclusion. Use write-formatted-text for headings and numbered or bullet lists when helpful. Request: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nWrite this as a structured report. Prefer title, background, status, issues, plan, and conclusion. Use write-formatted-text for headings and numbered or bullet lists when helpful. Request: ${input}`,
       },
     ];
   }
@@ -485,7 +497,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nTurn the content into a clean numbered outline for a report or meeting document. ${replaceInstruction} Request: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nTurn the content into a clean numbered outline for a report or meeting document. ${replaceInstruction} Request: ${input}`,
       },
     ];
   }
@@ -495,7 +507,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nRewrite the selected content according to this request. Return a replace-selection action only. Request: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nRewrite the selected content according to this request. Return a replace-selection action only. Request: ${input}`,
       },
     ];
   }
@@ -505,7 +517,7 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nContinue or complete the selected content. Keep the original selected text at the beginning and extend it naturally. Return a replace-selection action. Request: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nContinue or complete the selected content. Keep the original selected text at the beginning and extend it naturally. Return a replace-selection action. Request: ${input}`,
       },
     ];
   }
@@ -515,14 +527,14 @@ function buildPromptMessages(input: string, mode: AiMode, contextText: string) {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `${contextBlock}\n\nFill the document template or format shown in the context according to this request. Preserve headings, labels, and structure when appropriate. If the selected block should be replaced, return replace-selection. Otherwise use insert-text and insert-paragraph actions. Request: ${input}`,
+        content: `${profileBlock}\n\n${contextBlock}\n\nFill the document template or format shown in the context according to this request. Preserve headings, labels, and structure when appropriate. If the selected block should be replaced, return replace-selection. Otherwise use insert-text and insert-paragraph actions. Request: ${input}`,
       },
     ];
   }
 
   return [
     { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: `${contextBlock}\n\nUser request: ${input}` },
+    { role: 'user', content: `${profileBlock}\n\n${contextBlock}\n\nUser request: ${input}` },
   ];
 }
 

@@ -2463,6 +2463,289 @@ export class InputHandler {
     return blocks.join('\n');
   }
 
+  getAiDocumentProfile(): string {
+    if (this.wasm.pageCount === 0) {
+      return '';
+    }
+
+    try {
+      const pageCount = this.wasm.pageCount;
+      const maxPagesToScan = Math.min(pageCount, 20);
+      const sectionIndexes = new Set<number>();
+      const controlCounts = new Map<string, number>();
+      const styleCounts = new Map<string, number>();
+      const alignmentCounts = new Map<string, number>();
+      const lineSpacingCounts = new Map<string, number>();
+      const fontCounts = new Map<string, number>();
+      const fontSizeCounts = new Map<string, number>();
+      const openingSamples: string[] = [];
+      const headingSamples: string[] = [];
+      let sampledParagraphs = 0;
+      let numberedParagraphs = 0;
+      let bulletParagraphs = 0;
+      let headingLikeParagraphs = 0;
+
+      for (let pageIdx = 0; pageIdx < maxPagesToScan; pageIdx += 1) {
+        try {
+          const pageInfo = this.wasm.getPageInfo(pageIdx);
+          sectionIndexes.add(pageInfo.sectionIndex);
+        } catch {
+          // Ignore page metadata failures and continue sampling.
+        }
+
+        try {
+          const layout = this.wasm.getPageControlLayout(pageIdx);
+          for (const control of layout.controls ?? []) {
+            this.incrementAiProfileCount(controlCounts, control.type);
+            if (typeof control.secIdx === 'number') {
+              sectionIndexes.add(control.secIdx);
+            }
+          }
+        } catch {
+          // Ignore control layout failures and continue sampling.
+        }
+      }
+
+      const currentSectionIndex = this.cursor.getPosition().sectionIndex;
+      sectionIndexes.add(currentSectionIndex);
+
+      const orderedSections = Array.from(sectionIndexes).sort((left, right) => left - right);
+      const maxParagraphSamples = 18;
+      const maxParagraphsPerSection = 40;
+
+      for (const sectionIndex of orderedSections) {
+        if (sampledParagraphs >= maxParagraphSamples) {
+          break;
+        }
+
+        let paragraphCount = 0;
+        try {
+          paragraphCount = this.wasm.getParagraphCount(sectionIndex);
+        } catch {
+          continue;
+        }
+
+        const paragraphLimit = Math.min(paragraphCount, maxParagraphsPerSection);
+        for (let paragraphIndex = 0; paragraphIndex < paragraphLimit; paragraphIndex += 1) {
+          if (sampledParagraphs >= maxParagraphSamples) {
+            break;
+          }
+
+          const text = this.getAiProfileParagraphText(sectionIndex, paragraphIndex);
+          if (!text) {
+            continue;
+          }
+
+          sampledParagraphs += 1;
+          this.pushAiProfileSample(openingSamples, text, 5, 90);
+
+          let styleName = '';
+          try {
+            const styleInfo = this.wasm.getStyleAt(sectionIndex, paragraphIndex);
+            styleName = (styleInfo.name || '').trim();
+            if (styleName) {
+              this.incrementAiProfileCount(styleCounts, styleName);
+            }
+          } catch {
+            // Style lookup is optional for profile building.
+          }
+
+          let paraProps: ParaProperties = {};
+          try {
+            paraProps = this.wasm.getParaPropertiesAt(sectionIndex, paragraphIndex) || {};
+            const alignment = (paraProps.alignment || '').trim();
+            if (alignment) {
+              this.incrementAiProfileCount(alignmentCounts, alignment);
+            }
+
+            const lineSpacing = this.describeAiProfileLineSpacing(paraProps);
+            if (lineSpacing) {
+              this.incrementAiProfileCount(lineSpacingCounts, lineSpacing);
+            }
+
+            if (paraProps.headType === 'Number') {
+              numberedParagraphs += 1;
+            }
+            if (paraProps.headType === 'Bullet') {
+              bulletParagraphs += 1;
+            }
+          } catch {
+            // Paragraph properties are optional for profile building.
+          }
+
+          let charProps: CharProperties = {};
+          try {
+            charProps = this.wasm.getCharPropertiesAt(sectionIndex, paragraphIndex, 0) || {};
+            const fontName = (charProps.fontName || charProps.fontFamily || '').trim();
+            if (fontName) {
+              this.incrementAiProfileCount(fontCounts, fontName);
+            }
+
+            const fontSize = this.describeAiProfileFontSize(charProps.fontSize);
+            if (fontSize) {
+              this.incrementAiProfileCount(fontSizeCounts, fontSize);
+            }
+          } catch {
+            // Character properties are optional for profile building.
+          }
+
+          if (this.isAiProfileHeadingLike(text, styleName, paraProps, charProps)) {
+            headingLikeParagraphs += 1;
+            this.pushAiProfileSample(headingSamples, text, 5, 70);
+          }
+        }
+      }
+
+      const lines: string[] = [
+        `Pages: ${pageCount}. Sections sampled: ${orderedSections.length}. Paragraph samples: ${sampledParagraphs}.`,
+      ];
+
+      const elementSummary = this.formatAiProfileCounts(controlCounts, 5);
+      if (elementSummary) {
+        lines.push(`Elements: ${elementSummary}.`);
+      }
+
+      const styleSummary = this.formatAiProfileCounts(styleCounts, 4);
+      if (styleSummary) {
+        lines.push(`Frequent styles: ${styleSummary}.`);
+      }
+
+      const formatParts = [
+        this.formatAiProfileLabel('alignment', this.getTopAiProfileKey(alignmentCounts)),
+        this.formatAiProfileLabel('line spacing', this.getTopAiProfileKey(lineSpacingCounts)),
+        this.formatAiProfileLabel('font', this.getTopAiProfileKey(fontCounts)),
+        this.formatAiProfileLabel('size', this.getTopAiProfileKey(fontSizeCounts)),
+      ].filter(Boolean);
+      if (formatParts.length > 0) {
+        lines.push(`Common formatting: ${formatParts.join(', ')}.`);
+      }
+
+      const structureParts = [
+        headingLikeParagraphs > 0 && sampledParagraphs > 0 ? `heading-like ${headingLikeParagraphs}/${sampledParagraphs}` : '',
+        numberedParagraphs > 0 && sampledParagraphs > 0 ? `numbered ${numberedParagraphs}/${sampledParagraphs}` : '',
+        bulletParagraphs > 0 && sampledParagraphs > 0 ? `bulleted ${bulletParagraphs}/${sampledParagraphs}` : '',
+      ].filter(Boolean);
+      if (structureParts.length > 0) {
+        lines.push(`Structure cues: ${structureParts.join(', ')}.`);
+      }
+
+      if (headingSamples.length > 0) {
+        lines.push(`Heading examples: ${headingSamples.join(' | ')}.`);
+      }
+
+      if (openingSamples.length > 0) {
+        lines.push(`Tone samples: ${openingSamples.join(' | ')}.`);
+      }
+
+      if (maxPagesToScan < pageCount) {
+        lines.push(`Sampling note: first ${maxPagesToScan} pages were scanned for speed.`);
+      }
+
+      return lines.join('\n');
+    } catch (error) {
+      console.warn('[InputHandler] getAiDocumentProfile failed:', error);
+      return '';
+    }
+  }
+
+  private getAiProfileParagraphText(sectionIndex: number, paragraphIndex: number): string {
+    try {
+      return this.wasm
+        .getTextRange(sectionIndex, paragraphIndex, 0, 65535)
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      return '';
+    }
+  }
+
+  private incrementAiProfileCount(bucket: Map<string, number>, key: string | undefined): void {
+    const normalizedKey = (key || '').trim();
+    if (!normalizedKey) {
+      return;
+    }
+    bucket.set(normalizedKey, (bucket.get(normalizedKey) || 0) + 1);
+  }
+
+  private formatAiProfileCounts(bucket: Map<string, number>, limit: number): string {
+    return Array.from(bucket.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, limit)
+      .map(([key, count]) => `${key}(${count})`)
+      .join(', ');
+  }
+
+  private getTopAiProfileKey(bucket: Map<string, number>): string {
+    const top = Array.from(bucket.entries()).sort((left, right) => right[1] - left[1])[0];
+    return top?.[0] || '';
+  }
+
+  private formatAiProfileLabel(label: string, value: string): string {
+    return value ? `${label} ${value}` : '';
+  }
+
+  private pushAiProfileSample(samples: string[], text: string, maxItems: number, maxLength: number): void {
+    if (samples.length >= maxItems) {
+      return;
+    }
+
+    const normalized = text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+    if (!samples.includes(normalized)) {
+      samples.push(normalized);
+    }
+  }
+
+  private describeAiProfileLineSpacing(props: ParaProperties): string {
+    if (typeof props.lineSpacing !== 'number' || Number.isNaN(props.lineSpacing)) {
+      return '';
+    }
+
+    if (!props.lineSpacingType || props.lineSpacingType === 'Percent') {
+      return `${Math.round(props.lineSpacing)}%`;
+    }
+
+    return `${Math.round(props.lineSpacing)} (${props.lineSpacingType})`;
+  }
+
+  private describeAiProfileFontSize(fontSize?: number): string {
+    if (typeof fontSize !== 'number' || !Number.isFinite(fontSize) || fontSize <= 0) {
+      return '';
+    }
+
+    const pointSize = fontSize / 100;
+    const rounded = Math.round(pointSize * 10) / 10;
+    return Number.isInteger(rounded) ? `${rounded.toFixed(0)}pt` : `${rounded.toFixed(1)}pt`;
+  }
+
+  private isAiProfileHeadingLike(
+    text: string,
+    styleName: string,
+    paraProps: ParaProperties,
+    charProps: CharProperties,
+  ): boolean {
+    const normalizedStyle = styleName.toLowerCase();
+    if (paraProps.headType && paraProps.headType !== 'None') {
+      return true;
+    }
+
+    if (
+      normalizedStyle.includes('title') ||
+      normalizedStyle.includes('heading') ||
+      normalizedStyle.includes('제목') ||
+      normalizedStyle.includes('목차') ||
+      normalizedStyle.includes('장')
+    ) {
+      return true;
+    }
+
+    const fontSize = typeof charProps.fontSize === 'number' ? charProps.fontSize : 0;
+    if ((charProps.bold || fontSize >= 1300) && text.length <= 80) {
+      return true;
+    }
+
+    return /^[0-9]+[.)]\s+/.test(text) || /^[가-힣A-Za-z0-9\s]+:$/.test(text);
+  }
+
   /** 지정된 선택 범위에 글자 서식을 적용한다 (커맨드 시스템용) */
   applyCharPropsToRange(
     start: DocumentPosition,
