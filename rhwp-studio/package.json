@@ -16,6 +16,10 @@
     "vite": "^8.0.8"
   },
   "dependencies": {
+<<<<<<< Updated upstream
     "@rhwp/core": "^0.7.2"
+=======
+    "jspdf": "^4.2.1"
+>>>>>>> Stashed changes
   }
 }

@@ -513,7 +513,10 @@ eventBus.on('equation-edit-request', () => {
 async function loadFromUrlParam(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const fileUrl = params.get('url');
-  if (!fileUrl) return;
+  if (!fileUrl) {
+    createNewDocument();
+    return;
+  }
 
   const fileName = params.get('filename') || fileUrl.split('/').pop()?.split('?')[0] || 'document.hwp';
   const msg = sbMessage();

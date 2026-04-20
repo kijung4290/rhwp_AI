@@ -26,6 +26,8 @@ export const defaultShortcuts: [ShortcutDef, string][] = [
   [{ key: 'b', ctrl: true }, 'format:bold'],
   [{ key: 'i', ctrl: true }, 'format:italic'],
   [{ key: 'u', ctrl: true }, 'format:underline'],
+  [{ key: 'u', alt: true, shift: true }, 'format:underline'],
+  [{ key: 'ㅕ', alt: true, shift: true }, 'format:underline'],
   [{ key: 'l', alt: true }, 'format:char-shape'],
   [{ key: 'ㄹ', alt: true }, 'format:char-shape'],
   [{ key: 't', alt: true }, 'format:para-shape'],

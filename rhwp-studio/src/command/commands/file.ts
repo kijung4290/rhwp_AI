@@ -3,6 +3,7 @@ import { PageSetupDialog } from '@/ui/page-setup-dialog';
 import { AboutDialog } from '@/ui/about-dialog';
 import { showConfirm } from '@/ui/confirm-dialog';
 import { showSaveAs } from '@/ui/save-as-dialog';
+import { jsPDF } from 'jspdf';
 
 // File System Access API (Chrome/Edge)
 declare global {
@@ -49,52 +50,150 @@ export const fileCommands: CommandDef[] = [
     async execute(services) {
       try {
         const saveName = services.wasm.fileName;
-        const bytes = services.wasm.exportHwp();
-        const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/x-hwp' });
+        const baseName = saveName.replace(/\.hwp$/i, '').replace(/\.hwpx$/i, '');
+        
+        const hwpBytes = services.wasm.exportHwp();
+        const hwpBlob = new Blob([hwpBytes as unknown as BlobPart], { type: 'application/x-hwp' });
 
-        // 1) File System Access API 지원 시 네이티브 저장 대화상자 사용
         if ('showSaveFilePicker' in window) {
           try {
             const handle = await window.showSaveFilePicker!({
               suggestedName: saveName,
-              types: [{
-                description: 'HWP 문서',
-                accept: { 'application/x-hwp': ['.hwp'] },
-              }],
+              types: [
+                { description: 'HWP 문서', accept: { 'application/x-hwp': ['.hwp'] } },
+                { description: 'PDF 문서', accept: { 'application/pdf': ['.pdf'] } },
+                { description: '이미지 (JPEG)', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } },
+                { description: '이미지 (PNG)', accept: { 'image/png': ['.png'] } }
+              ],
             });
+            
+            const fileExt = handle.name.split('.').pop()?.toLowerCase();
+            let outputBlob: Blob = hwpBlob;
+            const statusEl = document.getElementById('sb-message');
+            const origStatus = statusEl?.textContent || '';
+            
+            if (fileExt === 'pdf' || fileExt === 'jpg' || fileExt === 'jpeg' || fileExt === 'png') {
+                if (statusEl) statusEl.textContent = '파일 변환 준비 중...';
+                
+                const wasm = services.wasm;
+                const pageCount = wasm.pageCount;
+                
+                if (fileExt === 'pdf') {
+                   const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                   for (let i = 0; i < pageCount; i++) {
+                       if (statusEl) statusEl.textContent = `PDF 생성 중... (${i + 1}/${pageCount})`;
+                       const svgString = wasm.renderPageSvg(i);
+                       const pageInfo = wasm.getPageInfo(i);
+                       const width = pageInfo.width;
+                       const height = pageInfo.height;
+                       
+                       const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                       const svgUrl = URL.createObjectURL(svgBlob);
+                       
+                       await new Promise<void>((resolve, reject) => {
+                           const img = new Image();
+                           img.onload = () => {
+                               const canvas = document.createElement('canvas');
+                               const scale = 2; // 고해상도
+                               canvas.width = width * scale;
+                               canvas.height = height * scale;
+                               const ctx = canvas.getContext('2d');
+                               if (ctx) {
+                                   ctx.fillStyle = '#ffffff';
+                                   ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                   ctx.scale(scale, scale);
+                                   ctx.drawImage(img, 0, 0, width, height);
+                                   const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                                   
+                                   const widthMm = width * 25.4 / 96;
+                                   const heightMm = height * 25.4 / 96;
+                                   
+                                   if (i === 0) doc.deletePage(1); // 기본 생성되는 빈 페이지 삭제
+                                   doc.addPage([widthMm, heightMm], widthMm > heightMm ? 'l' : 'p');
+                                   doc.addImage(imgData, 'JPEG', 0, 0, widthMm, heightMm);
+                               }
+                               URL.revokeObjectURL(svgUrl);
+                               resolve();
+                           };
+                           img.onerror = () => { URL.revokeObjectURL(svgUrl); reject(new Error('Image render failed')); };
+                           img.src = svgUrl;
+                       });
+                       await new Promise(r => setTimeout(r, 0)); // UI 갱신을 위해 스레드 양보
+                   }
+                   outputBlob = doc.output('blob');
+                } else {
+                    // PNG/JPG의 경우 첫 번째 페이지만 출력
+                    if (statusEl) statusEl.textContent = `이미지 생성 중...`;
+                    const svgString = wasm.renderPageSvg(0);
+                    const pageInfo = wasm.getPageInfo(0);
+                    const width = pageInfo.width;
+                    const height = pageInfo.height;
+                    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                    const svgUrl = URL.createObjectURL(svgBlob);
+                    
+                    outputBlob = await new Promise<Blob>((resolve, reject) => {
+                       const img = new Image();
+                       img.onload = () => {
+                           const canvas = document.createElement('canvas');
+                           const scale = 2;
+                           canvas.width = width * scale;
+                           canvas.height = height * scale;
+                           const ctx = canvas.getContext('2d');
+                           if (ctx) {
+                               ctx.fillStyle = '#ffffff';
+                               ctx.fillRect(0, 0, canvas.width, canvas.height);
+                               ctx.scale(scale, scale);
+                               ctx.drawImage(img, 0, 0, width, height);
+                               
+                               canvas.toBlob((b) => {
+                                   if (b) resolve(b);
+                                   else reject(new Error('Blob generation failed'));
+                               }, fileExt === 'png' ? 'image/png' : 'image/jpeg', 0.95);
+                           } else {
+                               reject(new Error('Canvas context failed'));
+                           }
+                           URL.revokeObjectURL(svgUrl);
+                       };
+                       img.onerror = () => { URL.revokeObjectURL(svgUrl); reject(); };
+                       img.src = svgUrl;
+                    });
+                }
+                
+                if (statusEl) statusEl.textContent = origStatus;
+            }
+
             const writable = await handle.createWritable();
-            await writable.write(blob);
+            await writable.write(outputBlob);
             await writable.close();
-            services.wasm.fileName = handle.name;
-            console.log(`[file:save] ${handle.name} (${(bytes.length / 1024).toFixed(1)}KB)`);
+            
+            if (fileExt === 'hwp') {
+                services.wasm.fileName = handle.name;
+            }
+            
+            console.log(`[file:save] ${handle.name} saved.`);
             return;
           } catch (e) {
-            // 사용자가 취소하면 AbortError 발생 — 무시
             if (e instanceof DOMException && e.name === 'AbortError') return;
-            // 그 외 오류는 폴백으로 진행
             console.warn('[file:save] File System Access API 실패, 폴백:', e);
           }
         }
 
-        // 2) 폴백: 새 문서인 경우 자체 파일이름 대화상자 표시
+        // 폴백 (기본 동작)
         let downloadName = saveName;
         if (services.wasm.isNewDocument) {
-          const baseName = saveName.replace(/\.hwp$/i, '');
           const result = await showSaveAs(baseName);
           if (!result) return;
           downloadName = result;
           services.wasm.fileName = downloadName;
         }
 
-        // 3) Blob 다운로드
-        const url = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(hwpBlob);
         const a = document.createElement('a');
         a.href = url;
         a.download = downloadName;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-        console.log(`[file:save] ${downloadName} (${(bytes.length / 1024).toFixed(1)}KB)`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[file:save] 저장 실패:', msg);
