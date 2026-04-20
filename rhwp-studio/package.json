@@ -16,7 +16,7 @@
     "vite": "^8.0.8"
   },
   "dependencies": {
-    "@rhwp/core": "^0.7.2",
+    "@rhwp/core": "^0.7.3",
     "jspdf": "^4.2.1"
   }
 }
