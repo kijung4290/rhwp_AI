@@ -96,6 +96,16 @@ export class WasmBridge {
     return this._fileName === '새 문서.hwp';
   }
 
+  exportAstJson(): string {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return this.doc.exportAstJson();
+  }
+
+  applyAstPatch(patchJson: string): string {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return this.doc.applyAstPatch(patchJson);
+  }
+
   exportHwp(): Uint8Array {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     return this.doc.exportHwp();

@@ -128,7 +128,23 @@ async function handleSend() {
 
   chatHistory.push({ role: 'user', content: input });
 
-  const promptData = determinePrompt(input);
+  const viewerTab = await findViewerTab();
+  let astContext = '';
+  if (viewerTab?.id) {
+    try {
+      const astResponse = await sendRuntimeMessage({
+        type: 'get-hwp-ast',
+        targetTabId: viewerTab.id,
+      });
+      if (astResponse?.ast) {
+        astContext = astResponse.ast;
+      }
+    } catch (e) {
+      console.warn('Failed to get AST:', e);
+    }
+  }
+
+  const promptData = determinePrompt(input, astContext);
   currentRequestId = createRequestId();
   currentAiContent = '';
   lastMessageEl = null;
@@ -220,24 +236,41 @@ function resetGenerationState() {
   lastMessageEl = null;
 }
 
-function determinePrompt(input) {
+function determinePrompt(input, astContext = '') {
   const normalized = normalizeText(input);
+  
+  // AST 컨텍스트가 있으면 프롬프트에 추가
+  const appendAst = (promptData) => {
+    if (!astContext) return promptData;
+    const modifiedMessages = [...promptData.messages];
+    const systemMsgIndex = modifiedMessages.findIndex(m => m.role === 'system');
+    
+    const astInstruction = `\n\n[현재 문서 구조 (AST)]\n\`\`\`json\n${astContext}\n\`\`\`\n\n문서의 특정 위치에 삽입하려면 기존 hwpctl 액션 대신 다음 형태의 AST 패치를 배열로 반환하세요:\n\`\`\`json\n[{"action": "insert_after", "targetId": "sec_0_para_3", "node": { "type": "Paragraph", "text": "생성된 내용" }}]\n\`\`\``;
+    
+    if (systemMsgIndex >= 0) {
+      modifiedMessages[systemMsgIndex].content += astInstruction;
+    } else {
+      modifiedMessages.unshift({ role: 'system', content: astInstruction });
+    }
+    return { ...promptData, messages: modifiedMessages };
+  };
+
   const tableSuggestion = findMatchingSuggestion(normalized, ['table']);
-  if (tableSuggestion) return PROMPTS[tableSuggestion.promptBuilder](input);
+  if (tableSuggestion) return appendAst(PROMPTS[tableSuggestion.promptBuilder](input));
 
   const outlineSuggestion = findMatchingSuggestion(normalized, ['outline']);
-  if (outlineSuggestion) return PROMPTS[outlineSuggestion.promptBuilder](input);
+  if (outlineSuggestion) return appendAst(PROMPTS[outlineSuggestion.promptBuilder](input));
 
   const reportSuggestion = findMatchingSuggestion(normalized, ['report']);
-  if (reportSuggestion) return PROMPTS[reportSuggestion.promptBuilder](input);
+  if (reportSuggestion) return appendAst(PROMPTS[reportSuggestion.promptBuilder](input));
 
   const formatSuggestion = findMatchingSuggestion(normalized, ['format']);
-  if (formatSuggestion) return PROMPTS[formatSuggestion.promptBuilder](input);
+  if (formatSuggestion) return appendAst(PROMPTS[formatSuggestion.promptBuilder](input));
 
   const writeSuggestion = findMatchingSuggestion(normalized, ['write']);
-  if (writeSuggestion) return PROMPTS[writeSuggestion.promptBuilder](input);
+  if (writeSuggestion) return appendAst(PROMPTS[writeSuggestion.promptBuilder](input));
 
-  return PROMPTS.general(input);
+  return appendAst(PROMPTS.general(input));
 }
 
 function normalizeText(value) {
@@ -275,15 +308,33 @@ async function handleExecute() {
   }
 
   try {
-    const response = await sendRuntimeMessage({
-      type: 'execute-hwpctl-actions',
-      targetTabId: viewerTab.id,
-      actions,
-    });
+    const results = [];
+    let isAstPatch = false;
 
-    const results = Array.isArray(response?.results) ? response.results : [];
+    // Check if actions are AST patches or old hwpctl actions
+    if (actions.some(a => a.action && a.targetId)) {
+      isAstPatch = true;
+      for (const action of actions) {
+        const response = await sendRuntimeMessage({
+          type: 'apply-ast-patch',
+          targetTabId: viewerTab.id,
+          action,
+        });
+        results.push(response || { success: false, error: 'No response' });
+      }
+    } else {
+      const response = await sendRuntimeMessage({
+        type: 'execute-hwpctl-actions',
+        targetTabId: viewerTab.id,
+        actions,
+      });
+      if (Array.isArray(response?.results)) {
+        results.push(...response.results);
+      }
+    }
+
     if (results.length === 0) {
-      addMessage('error', response?.message || '문서 적용 결과를 받지 못했습니다.');
+      addMessage('error', '문서 적용 결과를 받지 못했습니다.');
       return;
     }
 
@@ -294,7 +345,7 @@ async function handleExecute() {
     if (failCount > 0) {
       results
         .filter((result) => !result?.success)
-        .forEach((result) => addMessage('error', result.message || '알 수 없는 오류'));
+        .forEach((result) => addMessage('error', result.error || result.message || '알 수 없는 오류'));
     }
 
     $('executeBtn').style.display = 'none';

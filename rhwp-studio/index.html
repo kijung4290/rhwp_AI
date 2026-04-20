@@ -394,8 +394,20 @@
       <span class="tb-sep"></span>
       <!-- AI 기능 -->
       <div class="tb-group">
-        <button class="tb-btn" id="tb-ai-create-table" title="AI 표 만들기" data-cmd="ai:create-table"><span class="tb-sprite icon-table"></span><span class="tb-label">AI<br/>표</span></button>
-        <button class="tb-btn" id="tb-ai-open-panel" title="AI 어시스턴트" data-cmd="ai:open-panel"><span class="tb-sprite icon-ai"></span><span class="tb-label">AI<br/>도우미</span></button>
+        <div class="tb-split">
+          <button class="tb-btn tb-split-main" id="tb-ai-open-panel" title="AI 어시스턴트 도구" data-cmd="ai:open-panel">
+            <span class="tb-sprite icon-ai"></span><span class="tb-label">AI 도구</span>
+          </button>
+          <button class="tb-btn tb-split-arrow" title="AI 메뉴 펼치기"><span class="tb-arrow-icon">▾</span></button>
+          <div class="tb-split-menu">
+            <div class="tb-split-item" data-cmd="ai:write-report"><span class="md-icon" style="font-size:16px;">📝</span> 보고서 초안 작성</div>
+            <div class="tb-split-item" data-cmd="ai:report-outline"><span class="md-icon" style="font-size:16px;">📑</span> 번호 개요 만들기</div>
+            <div class="tb-split-sep"></div>
+            <div class="tb-split-item" data-cmd="ai:create-table"><span class="md-icon" style="font-size:16px;">📊</span> AI 표 구조 생성</div>
+            <div class="tb-split-sep"></div>
+            <div class="tb-split-item" data-cmd="ai:open-panel"><span class="md-icon" style="font-size:16px;">✨</span> 어시스턴트 패널 열기</div>
+          </div>
+        </div>
       </div>
       <span class="tb-sep"></span>
       <div class="tb-group">

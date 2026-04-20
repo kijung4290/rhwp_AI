@@ -160,6 +160,16 @@
   border-top: 1px solid var(--color-border);
 }
 
+/* 메뉴 그룹 헤더 */
+.md-header {
+  padding: 8px 16px 4px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-hint);
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* 서브메뉴 컨테이너 */
 .md-sub {
   position: relative;

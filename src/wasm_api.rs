@@ -2779,6 +2779,93 @@ impl HwpDocument {
 
     // ─── Phase 2 끝 ─────────────────────────────────────────
 
+    /// 문서를 AST 기반 JSON 구조로 변환하여 반환한다. (AI 컨텍스트용)
+    #[wasm_bindgen(js_name = exportAstJson)]
+    pub fn export_ast_json(&self) -> Result<String, JsValue> {
+        use crate::model::control::Control;
+
+        let mut json = String::with_capacity(4096);
+        json.push_str("{\"type\":\"Document\",\"sections\":[");
+        for (sec_idx, section) in self.document.sections.iter().enumerate() {
+            if sec_idx > 0 { json.push(','); }
+            json.push_str(&format!("{{\"id\":\"sec_{}\",\"type\":\"Section\",\"paragraphs\":[", sec_idx));
+            
+            for (p_idx, para) in section.paragraphs.iter().enumerate() {
+                if p_idx > 0 { json.push(','); }
+                let text = crate::document_core::helpers::json_escape(&para.text);
+                
+                let mut tables_json = String::new();
+                let mut t_idx = 0;
+                for ctrl in &para.controls {
+                    if let Control::Table(tbl) = ctrl {
+                        if t_idx > 0 { tables_json.push(','); }
+                        tables_json.push_str(&format!("{{\"type\":\"Table\",\"rows\":{},\"cols\":{},\"cells\":[", tbl.row_count, tbl.col_count));
+                        for (c_idx, cell) in tbl.cells.iter().enumerate() {
+                            if c_idx > 0 { tables_json.push(','); }
+                            let mut cell_text = String::new();
+                            for cp in &cell.paragraphs {
+                                if !cell_text.is_empty() { cell_text.push_str("\\n"); }
+                                cell_text.push_str(&crate::document_core::helpers::json_escape(&cp.text));
+                            }
+                            tables_json.push_str(&format!("{{\"row\":{},\"col\":{},\"text\":\"{}\"}}", cell.row, cell.col, cell_text));
+                        }
+                        tables_json.push_str("]}");
+                        t_idx += 1;
+                    }
+                }
+                
+                json.push_str(&format!(
+                    "{{\"id\":\"sec_{}_para_{}\",\"type\":\"Paragraph\",\"text\":\"{}\",\"tables\":[{}]}}",
+                    sec_idx, p_idx, text, tables_json
+                ));
+            }
+            json.push_str("]}");
+        }
+        json.push_str("]}");
+        Ok(json)
+    }
+
+    /// AST 패치를 적용한다.
+    #[wasm_bindgen(js_name = applyAstPatch)]
+    pub fn apply_ast_patch(&mut self, patch_json: &str) -> Result<String, JsValue> {
+        use crate::document_core::helpers::{json_str, json_ok_with, json_object};
+        use crate::model::paragraph::Paragraph;
+
+        let action = json_str(patch_json, "action").unwrap_or_default();
+        let target_id = json_str(patch_json, "targetId").unwrap_or_default();
+
+        if action == "insert_after" {
+            let parts: Vec<&str> = target_id.split('_').collect();
+            if parts.len() >= 4 && parts[0] == "sec" && parts[2] == "para" {
+                if let (Ok(sec_idx), Ok(para_idx)) = (parts[1].parse::<usize>(), parts[3].parse::<usize>()) {
+                    if let Some(node_json) = json_object(patch_json, "node") {
+                        let node_type = json_str(&node_json, "type").unwrap_or_default();
+                        if node_type == "Paragraph" {
+                            let text = json_str(&node_json, "text").unwrap_or_default();
+                            
+                            if sec_idx < self.core.document.sections.len() {
+                                let section = &mut self.core.document.sections[sec_idx];
+                                let insert_idx = para_idx + 1;
+                                
+                                let mut new_para = Paragraph::new_empty();
+                                new_para.text = text;
+                                new_para.char_count = new_para.text.chars().count() as u32;
+                                
+                                if insert_idx <= section.paragraphs.len() {
+                                    section.paragraphs.insert(insert_idx, new_para);
+                                    self.core.invalidate_page_tree_cache();
+                                    return Ok(json_ok_with(r#""message":"Paragraph inserted""#));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Err(JsValue::from_str("Unsupported patch or target"))
+    }
+
     /// 문서를 HWP 바이너리로 내보낸다.
     ///
     /// Document IR을 HWP 5.0 CFB 바이너리로 직렬화하여 반환한다.

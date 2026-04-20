@@ -1037,19 +1037,22 @@ export class InputHandler {
 
     if (hasSelection) {
       return [
-        { type: 'command', commandId: 'ai:report-outline', label: 'AI로 번호 개요 만들기' },
-        { type: 'command', commandId: 'ai:write-report', label: 'AI로 보고서 형식 정리' },
-        { type: 'command', commandId: 'ai:rewrite-selection', label: 'AI로 선택 내용 수정' },
-        { type: 'command', commandId: 'ai:complete-selection', label: 'AI로 선택 내용 이어쓰기' },
-        { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
+        { type: 'header', label: '✨ AI 문서 편집' },
+        { type: 'command', commandId: 'ai:rewrite-selection', label: '선택 내용 수정하기' },
+        { type: 'command', commandId: 'ai:complete-selection', label: '선택 내용 이어쓰기' },
+        { type: 'command', commandId: 'ai:write-report', label: '보고서 형식으로 정리' },
+        { type: 'separator' },
+        { type: 'command', commandId: 'ai:fill-template', label: '양식 자동 채우기' },
       ];
     }
 
     return [
-      { type: 'command', commandId: 'ai:write-report', label: 'AI로 보고서 초안 작성' },
-      { type: 'command', commandId: 'ai:report-outline', label: 'AI로 번호 개요 만들기' },
-      { type: 'command', commandId: 'ai:open-panel', label: 'AI 도우미 열기' },
-      { type: 'command', commandId: 'ai:fill-template', label: 'AI로 양식 채우기' },
+      { type: 'header', label: '✨ AI 문서 도구' },
+      { type: 'command', commandId: 'ai:write-report', label: '보고서 초안 작성' },
+      { type: 'command', commandId: 'ai:report-outline', label: '번호 개요 만들기' },
+      { type: 'command', commandId: 'ai:fill-template', label: '양식 자동 채우기' },
+      { type: 'separator' },
+      { type: 'command', commandId: 'ai:open-panel', label: 'AI 어시스턴트 열기' },
     ];
   }
 

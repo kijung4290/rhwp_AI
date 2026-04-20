@@ -3,7 +3,7 @@ import type { CommandRegistry } from '@/command/registry';
 
 /** 컨텍스트 메뉴 항목 정의 */
 export interface ContextMenuItem {
-  type: 'command' | 'separator';
+  type: 'command' | 'separator' | 'header';
   commandId?: string;
   label?: string;
 }
@@ -37,6 +37,14 @@ export class ContextMenu {
         const sep = document.createElement('div');
         sep.className = 'md-sep';
         menu.appendChild(sep);
+        continue;
+      }
+
+      if (item.type === 'header') {
+        const header = document.createElement('div');
+        header.className = 'md-header';
+        header.textContent = item.label ?? '';
+        menu.appendChild(header);
         continue;
       }
 
