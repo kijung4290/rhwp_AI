@@ -10,7 +10,7 @@
     "e2e": "node e2e/text-flow.test.mjs"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.40",
+    "@types/chrome": "^0.1.42",
     "puppeteer-core": "^24.40.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.8"
